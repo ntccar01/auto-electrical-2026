@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>證書驗證（V2-P0 骨架）</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <h2>證書驗證（V2-P0 骨架）</h2>
+    <div class="status-bar"><span>用法：verify.html?id=NTC-HORN-2026-XXXX</span></div>
+    <div style="max-width:640px;background:#ecf0f1;border-radius:10px;padding:24px;">
+        <p id="vmsg">完整驗證（SHA-256 註冊表比對）於 P2 實作。</p>
+        <p><a href="index.html">← 回學生端</a>　<a href="teacher.html">教師端 →</a></p>
+    </div>
+    <script>
+        (function () {
+            var q = new URLSearchParams(location.search).get('id');
+            if (q) document.getElementById('vmsg').textContent = '查驗 ID：' + q + '（P2 接註冊表後顯示比對結果）';
+        })();
+    </script>
+</body>
+</html>

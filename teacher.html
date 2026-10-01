@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>教師端（V2-P0 骨架）</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .t-wrap { max-width: 960px; margin: 0 auto; background: #ecf0f1; border-radius: 10px; padding: 24px; }
+        .t-wrap h2 { color: #2c3e50; }
+        table.bank { width: 100%; border-collapse: collapse; font-size: 14px; background: #fff; }
+        table.bank th, table.bank td { border: 1px solid #bdc3c7; padding: 6px 8px; text-align: left; }
+        table.bank th { background: #2c3e50; color: #fff; }
+        .unit-pick { display: flex; gap: 16px; margin: 12px 0; flex-wrap: wrap; }
+        .unit-pick label { background: #fff; border: 1px solid #bdc3c7; border-radius: 6px; padding: 8px 12px; cursor: pointer; }
+        .todo { color: #7f8c8d; }
+    </style>
+</head>
+<body>
+    <h2>教師端（V2-P0 骨架）</h2>
+    <div class="status-bar"><span>採計單元勾選 → 動態雷達圖（P2 實作）</span></div>
+    <div class="t-wrap">
+        <h2>採計單元</h2>
+        <div class="unit-pick" id="unitPick"></div>
+        <h2>喇叭題庫一覽（14 題）</h2>
+        <table class="bank" id="bankTable">
+            <thead><tr><th>ID</th><th>軌</th><th>等級</th><th>適用</th><th>故障 / 陷阱</th><th>症狀</th></tr></thead>
+            <tbody></tbody>
+        </table>
+        <h2>監考 / 回放 / 調分 / 核章</h2>
+        <p class="todo">P2 實作：成績一覽、歷程回放、±10 調分、批次核章、匯出 CSV。</p>
+        <p><a href="index.html">← 回學生端</a>　<a href="verify.html">證書驗證 →</a></p>
+    </div>
+    <script src="shared/js/config.js"></script>
+    <script src="units/horn/exam_bank.js"></script>
+    <script>
+        (function () {
+            var units = (window.NTC_CONFIG && window.NTC_CONFIG.units) || [];
+            var pick = document.getElementById('unitPick');
+            pick.innerHTML = units.map(function (u) {
+                var dis = u.enabled ? '' : ' disabled';
+                var chk = u.enabled ? ' checked' : '';
+                return '<label><input type="checkbox" data-unit="' + u.id + '"' + chk + dis + '> ' + u.name + (u.enabled ? '' : '（未開放）') + '</label>';
+            }).join('');
+            var tb = document.querySelector('#bankTable tbody');
+            var rows = (window.HORN_BANK ? window.HORN_BANK.items : []).map(function (it) {
+                var f = it.wiringTrap ? ('陷阱:' + it.wiringTrap) : it.faults.join(' + ');
+                return '<tr><td>' + it.id + '</td><td>' + it.track + '</td><td>' + it.level + '</td><td>' + it.modes.join('/') + '</td><td>' + f + '</td><td>' + it.symptoms + '</td></tr>';
+            });
+            tb.innerHTML = rows.join('');
+        })();
+    </script>
+</body>
+</html>

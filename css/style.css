@@ -91,6 +91,20 @@
         #circuitSvg.delete-mode .wire { cursor: pointer; }
         #circuitSvg.delete-mode .wire:hover { stroke: #e74c3c; stroke-width: 5; }
         #circuitSvg.delete-mode .conn-point { cursor: not-allowed; }
+        /* P1 觸控：SVG 內拖曳不觸發捲動/縮放手勢 */
+        #circuitSvg, #meterSvg { touch-action: none; }
+        /* P1 OEM 浮動線路圖 */
+        .btn-oem { background-color: #1a5276; } .btn-oem:hover { background-color: #154360; }
+        #oemFloat { position: absolute; top: 20px; right: 20px; width: 380px; background: #fff; border: 2px solid #1a5276; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.4); z-index: 150; }
+        #oemHead { display: flex; justify-content: space-between; align-items: center; background: #1a5276; color: #fff; font-weight: bold; font-size: 14px; padding: 6px 10px; border-radius: 6px 6px 0 0; cursor: move; user-select: none; }
+        #oemHead button { margin-left: 4px; border: none; border-radius: 4px; background: #2e86c1; color: #fff; font-size: 12px; padding: 2px 7px; cursor: pointer; }
+        #oemHead button:hover { background: #1a5276; }
+        #oemHead .oem-tab.active { background: #f1c40f; color: #1a5276; }
+        #oemBody { padding: 8px; background: #fff; border-radius: 0 0 6px 6px; }
+        #oemTabDiagram img { width: 100%; display: block; }
+        table.oem-values { width: 100%; border-collapse: collapse; font-size: 13px; }
+        table.oem-values th, table.oem-values td { border: 1px solid #bdc3c7; padding: 5px 7px; text-align: left; }
+        table.oem-values th { background: #1a5276; color: #fff; }
         
         /* 故障面板 (左側) */
         #faultPanel { position: absolute; top: 20px; left: -250px; width: 230px; background: #2c3e50; color: white; padding: 15px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4); transition: left 0.3s; z-index: 200; max-height: 80vh; overflow-y: auto; }

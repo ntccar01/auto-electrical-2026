@@ -121,6 +121,7 @@
                 <button id="submitAnswerBtn" class="action-btn btn-submit hidden">繳交診斷報告</button>
                 <button id="toPracticeBtn" class="action-btn btn-switch hidden" onclick="switchModeToPractice()">切換至練習模式</button>
                 <button id="setupGuideBtn" class="action-btn btn-guide hidden" onclick="openSetupGuide()">☁️ 雲端設定教學</button>
+                <button id="oemBtn" class="action-btn btn-oem hidden" onclick="OEM.toggle()">📖 線路圖</button>
             </div>
         </div>
 
@@ -153,6 +154,25 @@
                 <g id="tip-black-obj" transform="translate(230, 470)" class="probe-tip"><use href="#probe-handle-black"/></g>
             </svg>
         </div>
+
+        <div id="oemFloat" class="hidden">
+            <div id="oemHead"><span>📖 原廠線路圖</span><span><button class="oem-tab active" data-tab="diagram" onclick="OEM.tab('diagram')">線路圖</button><button class="oem-tab" data-tab="values" onclick="OEM.tab('values')">正常值</button><button onclick="OEM.zoom(40)">＋</button><button onclick="OEM.zoom(-40)">－</button><button onclick="OEM.minimize()">_</button><button onclick="OEM.toggle(false)">×</button></span></div>
+            <div id="oemBody">
+                <div id="oemTabDiagram"><img src="units/horn/oem-diagram.svg" alt="喇叭系統原廠線路圖"></div>
+                <div id="oemTabValues" class="hidden">
+                    <table class="oem-values">
+                        <tr><th>量測點</th><th>正常值</th><th>檔位</th></tr>
+                        <tr><td>電瓶開路電壓</td><td>12.6V</td><td>DCV 20V</td></tr>
+                        <tr><td>保險絲前後端（對搭鐵）</td><td>12V</td><td>DCV 20V</td></tr>
+                        <tr><td>繼電器線圈 85-86</td><td>80Ω（斷電量）</td><td>Ω 200</td></tr>
+                        <tr><td>繼電器接點 30-87（吸合）</td><td>0.1Ω</td><td>Ω 200</td></tr>
+                        <tr><td>上/下喇叭線圈</td><td>4Ω（斷電量）</td><td>Ω 200</td></tr>
+                        <tr><td>按鈕開關（按下）</td><td>導通 0.1Ω</td><td>Ω 200</td></tr>
+                        <tr><td>主迴路壓降</td><td>＜0.5V</td><td>DCV 20V</td></tr>
+                    </table>
+                </div>
+            </div>
+        </div>
         
         <div id="faultPanel">
             <h3>🔩 故障設定 (練習模式)</h3>
@@ -184,6 +204,8 @@
 
     <script src="shared/js/config.js"></script>
     <script src="units/horn/exam_bank.js"></script>
+    <script src="shared/js/logger.js"></script>
+    <script src="shared/js/oem.js"></script>
     <script src="shared/js/app.js"></script>
 </body>
 </html>

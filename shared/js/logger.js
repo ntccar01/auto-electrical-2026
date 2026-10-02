@@ -48,6 +48,8 @@ window.NTC_LOG = (function () {
     return n;
   }
 
+  function elapsed() { return Date.now() - t0; }
+
   function filter(type) {
     return events.filter(function (e) { return e.type === type; });
   }
@@ -63,6 +65,39 @@ window.NTC_LOG = (function () {
 
   function exportData() {
     return { version: 1, session: JSON.parse(JSON.stringify(session)), events: JSON.parse(JSON.stringify(events)) };
+  }
+
+  // 歷史封存：考評繳交後把 session 摘要存入本機歷史（教師頁＋證書用，P2）
+  var HIST_KEY = 'ntc-history-v1';
+  var HIST_MAX = 200;
+  function archive(summary) {
+    try {
+      var raw = localStorage.getItem(HIST_KEY);
+      var list = raw ? JSON.parse(raw) : [];
+      list.push({
+        sid: session.id, archivedAt: new Date().toISOString(),
+        unit: session.unit, mode: session.mode,
+        cls: session.student.cls, name: session.student.name, seat: session.student.seat,
+        paper: session.paper, faultConfigId: session.faultConfigId, faultId: session.faultId,
+        eventCount: events.length,
+        measureCount: count('probe_measure'), wireCount: count('wire_connect'),
+        repairOk: count('repair_ok'), repairMiss: count('repair_miss'),
+        durationMs: Date.now() - t0,
+        summary: summary || {}
+      });
+      while (list.length > HIST_MAX) list.shift();
+      localStorage.setItem(HIST_KEY, JSON.stringify(list));
+      return list[list.length - 1];
+    } catch (e) { return null; }
+  }
+  function history() {
+    try {
+      var raw = localStorage.getItem(HIST_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function historySave(list) {
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(list)); } catch (e) {}
   }
 
   function clear() {
@@ -86,8 +121,9 @@ window.NTC_LOG = (function () {
 
   return {
     session: session, events: events,
-    log: log, setSession: setSession, count: count,
+    log: log, setSession: setSession, count: count, elapsed: elapsed,
     filter: filter, probeCoverage: probeCoverage,
-    exportData: exportData, clear: clear
+    exportData: exportData, clear: clear,
+    archive: archive, history: history, historySave: historySave
   };
 })();

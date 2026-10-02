@@ -3,20 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>證書驗證（V2-P0 骨架）</title>
+    <title>證書驗證（V2-P2）</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <h2>證書驗證（V2-P0 骨架）</h2>
-    <div class="status-bar"><span>用法：verify.html?id=NTC-HORN-2026-XXXX</span></div>
+    <h2>證書驗證（V2-P2）</h2>
+    <div class="status-bar"><span>用法：verify.html?id=證書ID（本機註冊表；跨裝置請接 GAS）</span></div>
     <div style="max-width:640px;background:#ecf0f1;border-radius:10px;padding:24px;">
-        <p id="vmsg">完整驗證（SHA-256 註冊表比對）於 P2 實作。</p>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <input id="vid" placeholder="輸入證書ID" style="flex:1;padding:8px;">
+            <button onclick="VRF.check()" style="padding:8px 16px;cursor:pointer;">查驗</button>
+        </div>
+        <div id="vmsg">請輸入證書ID查驗。</div>
         <p><a href="index.html">← 回學生端</a>　<a href="teacher.html">教師端 →</a></p>
     </div>
     <script>
-        (function () {
-            var q = new URLSearchParams(location.search).get('id');
-            if (q) document.getElementById('vmsg').textContent = '查驗 ID：' + q + '（P2 接註冊表後顯示比對結果）';
+        window.VRF = (function () {
+            function find(id) {
+                try {
+                    var list = JSON.parse(localStorage.getItem('ntc-cert-v1') || '[]');
+                    for (var i = 0; i < list.length; i++) if (list[i].certId === id) return list[i];
+                } catch (e) {}
+                return null;
+            }
+            function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+            function check() {
+                var id = (document.getElementById('vid').value || '').trim();
+                var box = document.getElementById('vmsg');
+                if (!id) { box.textContent = '請輸入證書ID'; return; }
+                var c = find(id);
+                if (!c) { box.innerHTML = '❌ 查無此證書（本機無核發紀錄）'; return; }
+                box.innerHTML = '✅ 驗證通過<br>證書ID：' + esc(c.certId) + '<br>學生：' + esc(c.cls) + ' ' + esc(c.name) + '（' + esc(c.seat) + '）<br>' +
+                    '單元：' + esc((c.units || []).join('、')) + '　最佳總分：' + esc(c.best) + '<br>核發：' + esc(c.teacher) + '（' + esc(c.at) + '）<br>驗證碼：' + esc(String(c.hash).slice(0, 12));
+            }
+            var q = null;
+            try { q = new URLSearchParams(location.search).get('id'); } catch (e) {}
+            if (q) { document.getElementById('vid').value = q; check(); }
+            return { check: check };
         })();
     </script>
 </body>

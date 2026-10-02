@@ -3,52 +3,293 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>教師端（V2-P0 骨架）</title>
+    <title>教師端（V2-P2）</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
-        .t-wrap { max-width: 960px; margin: 0 auto; background: #ecf0f1; border-radius: 10px; padding: 24px; }
-        .t-wrap h2 { color: #2c3e50; }
-        table.bank { width: 100%; border-collapse: collapse; font-size: 14px; background: #fff; }
-        table.bank th, table.bank td { border: 1px solid #bdc3c7; padding: 6px 8px; text-align: left; }
-        table.bank th { background: #2c3e50; color: #fff; }
-        .unit-pick { display: flex; gap: 16px; margin: 12px 0; flex-wrap: wrap; }
+        .t-wrap { max-width: 1020px; margin: 0 auto; background: #ecf0f1; border-radius: 10px; padding: 24px; }
+        .t-wrap h2 { color: #2c3e50; border-bottom: 2px solid #1a5276; padding-bottom: 6px; }
+        table.bank, table.grades { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+        table.bank th, table.bank td, table.grades th, table.grades td { border: 1px solid #bdc3c7; padding: 5px 7px; text-align: left; }
+        table.bank th, table.grades th { background: #2c3e50; color: #fff; }
+        .unit-pick { display: flex; gap: 12px; margin: 12px 0; flex-wrap: wrap; }
         .unit-pick label { background: #fff; border: 1px solid #bdc3c7; border-radius: 6px; padding: 8px 12px; cursor: pointer; }
-        .todo { color: #7f8c8d; }
+        .row-btns button { margin: 2px; font-size: 12px; padding: 3px 8px; cursor: pointer; }
+        .pass { color: #27ae60; font-weight: bold; } .fail { color: #c0392b; font-weight: bold; }
+        .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; align-items: center; }
+        .toolbar input { padding: 6px; }
+        .toolbar button { padding: 7px 12px; cursor: pointer; }
+        #radarBox { background: #fff; border: 1px solid #bdc3c7; border-radius: 6px; padding: 10px; margin-top: 10px; }
+        @media print { .no-print { display: none !important; } }
     </style>
 </head>
 <body>
-    <h2>教師端（V2-P0 骨架）</h2>
-    <div class="status-bar"><span>採計單元勾選 → 動態雷達圖（P2 實作）</span></div>
+    <h2>教師端（V2-P2）</h2>
+    <div class="status-bar"><span>成績覆閱・調分・核章・匯出・雷達圖（本機歷史；跨裝置請接 GAS）</span></div>
     <div class="t-wrap">
-        <h2>採計單元</h2>
+        <h2>1. 採計單元</h2>
         <div class="unit-pick" id="unitPick"></div>
-        <h2>喇叭題庫一覽（14 題）</h2>
+
+        <h2>2. 成績一覽</h2>
+        <div class="toolbar no-print">
+            <input id="clsFilter" placeholder="篩選班級">
+            <button onclick="TCH.render()">篩選</button>
+            <button onclick="TCH.exportCSV()">匯出 CSV</button>
+            <span id="statLine"></span>
+        </div>
+        <table class="grades" id="gradeTable">
+            <thead><tr><th>時間</th><th>班級</th><th>姓名</th><th>座號</th><th>試卷/ID</th><th>通過</th><th>初評</th><th>調分</th><th>總分</th><th>量測/配線/試誤</th><th>核章</th><th class="no-print">操作</th></tr></thead>
+            <tbody></tbody>
+        </table>
+
+        <h2>3. 班級雷達圖（採計單元平均）</h2>
+        <div id="radarBox"></div>
+
+        <h2>4. 錯題統計</h2>
+        <table class="grades" id="missTable">
+            <thead><tr><th>故障配置ID</th><th>人次</th><th>通過率</th></tr></thead>
+            <tbody></tbody>
+        </table>
+
+        <h2>5. 喇叭題庫一覽</h2>
         <table class="bank" id="bankTable">
             <thead><tr><th>ID</th><th>軌</th><th>等級</th><th>適用</th><th>故障 / 陷阱</th><th>症狀</th></tr></thead>
             <tbody></tbody>
         </table>
-        <h2>監考 / 回放 / 調分 / 核章</h2>
-        <p class="todo">P2 實作：成績一覽、歷程回放、±10 調分、批次核章、匯出 CSV。</p>
-        <p><a href="index.html">← 回學生端</a>　<a href="verify.html">證書驗證 →</a></p>
+
+        <h2>6. 學習歷程證明（學期總證＋明細）</h2>
+        <div class="toolbar no-print">
+            <input id="certCls" placeholder="班級">
+            <input id="certSeat" placeholder="座號">
+            <button onclick="TCH.certPreview()">產生總證預覽</button>
+            <button onclick="TCH.certIssue()">核章發證</button>
+            <button onclick="window.print()">列印</button>
+        </div>
+        <div id="certBox"></div>
+
+        <p class="no-print"><a href="index.html">← 回學生端</a>　<a href="verify.html">證書驗證 →</a></p>
     </div>
     <script src="shared/js/config.js"></script>
     <script src="units/horn/exam_bank.js"></script>
+    <script src="shared/js/logger.js"></script>
     <script>
-        (function () {
-            var units = (window.NTC_CONFIG && window.NTC_CONFIG.units) || [];
-            var pick = document.getElementById('unitPick');
-            pick.innerHTML = units.map(function (u) {
+    window.TCH = (function () {
+        var AXES = (window.NTC_CONFIG && NTC_CONFIG.radarAxes) || ['配線', '量測', '診斷', '儀器操作', '效率'];
+        function units() { return (window.NTC_CONFIG && NTC_CONFIG.units) || []; }
+        function selectedUnits() {
+            return Array.from(document.querySelectorAll('#unitPick input:checked')).map(x => x.getAttribute('data-unit'));
+        }
+        function records() {
+            var all = NTC_LOG.history();
+            var us = selectedUnits();
+            var cf = document.getElementById('clsFilter').value.trim();
+            return all.filter(function (r) {
+                if (us.indexOf(r.unit) < 0) return false;
+                if (cf && (r.cls || '').indexOf(cf) < 0) return false;
+                return true;
+            });
+        }
+        function totalOf(r) {
+            var base = (r.summary && r.summary.score != null) ? r.summary.score : null;
+            var adj = (r.adjust && r.adjust.delta) || 0;
+            return base == null ? null : base + adj;
+        }
+        function axesOf(r) {
+            var p = (r.summary && r.summary.parts) || {};
+            var multi = !!(r.summary && r.summary.multi);
+            var wiring = (p['配線完整'] != null) ? p['配線完整'] * 10 : ((p['分段維修'] || 0) * 5);
+            var covMax = multi ? 15 : 25;
+            var meas = (((p['量測覆蓋'] || 0) / covMax) * 60 + ((p['檔位運用'] || 0) / 5) * 40);
+            var diag = multi ? ((p['故障找出'] || 0) / 30 * 70 + (p['量測證據'] || 0))
+                             : (((p['結果正確'] || p['結果相近'] || 0) / 40) * 100);
+            var inst = multi ? ((p['分段維修'] || 0) / 20 * 100) : ((p['檔位運用'] || 0) / 5 * 100);
+            var eff = (((p['用時'] || 0) + (p['一次繳交'] || 0)) / 20 * 100);
+            return [wiring, meas, diag, inst, eff].map(function (v) { return Math.max(0, Math.min(100, Math.round(v))); });
+        }
+        function radarSVG(avg) {
+            var cx = 130, cy = 110, R = 90, n = 5;
+            function pt(i, v) {
+                var a = -Math.PI / 2 + i * 2 * Math.PI / n;
+                var r = R * v / 100;
+                return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+            }
+            var grid = [25, 50, 75, 100].map(function (g) {
+                return '<polygon points="' + Array.from({ length: n }, function (_, i) { return pt(i, g).join(','); }).join(' ') + '" fill="none" stroke="#bdc3c7"/>';
+            }).join('');
+            var spokes = Array.from({ length: n }, function (_, i) {
+                var p = pt(i, 100), t = pt(i, 122);
+                return '<line x1="' + cx + '" y1="' + cy + '" x2="' + p[0] + '" y2="' + p[1] + '" stroke="#bdc3c7"/>' +
+                    '<text x="' + t[0] + '" y="' + t[1] + '" text-anchor="middle" font-size="13">' + AXES[i] + '</text>';
+            }).join('');
+            var poly = '<polygon points="' + avg.map(function (v, i) { return pt(i, v).join(','); }).join(' ') + '" fill="rgba(26,82,118,0.35)" stroke="#1a5276" stroke-width="2"/>';
+            var dots = avg.map(function (v, i) { var p = pt(i, v); return '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="3" fill="#1a5276"/>'; }).join('');
+            return '<svg width="260" height="220" viewBox="0 0 260 220">' + grid + spokes + poly + dots + '</svg>';
+        }
+        function render() {
+            // 單元勾選
+            document.getElementById('unitPick').innerHTML = units().map(function (u) {
                 var dis = u.enabled ? '' : ' disabled';
                 var chk = u.enabled ? ' checked' : '';
-                return '<label><input type="checkbox" data-unit="' + u.id + '"' + chk + dis + '> ' + u.name + (u.enabled ? '' : '（未開放）') + '</label>';
+                return '<label><input type="checkbox" data-unit="' + u.id + '"' + chk + dis + ' onchange="TCH.render()"> ' + u.name + (u.enabled ? '' : '（未開放）') + '</label>';
             }).join('');
-            var tb = document.querySelector('#bankTable tbody');
-            var rows = (window.HORN_BANK ? window.HORN_BANK.items : []).map(function (it) {
+            var rs = records();
+            var tb = document.querySelector('#gradeTable tbody');
+            tb.innerHTML = rs.map(function (r, i) {
+                var t = totalOf(r);
+                var adj = r.adjust ? ((r.adjust.delta >= 0 ? '+' : '') + r.adjust.delta) : '—';
+                var ap = r.approved ? ('✓ ' + r.approved.code) : '—';
+                var dis = r.approved ? 'disabled' : '';
+                return '<tr><td>' + (r.archivedAt || '').slice(0, 16).replace('T', ' ') + '</td><td>' + esc(r.cls) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.seat) + '</td>' +
+                    '<td>' + esc(r.faultConfigId || '') + '</td><td class="' + ((r.summary && r.summary.pass) ? 'pass' : 'fail') + '">' + ((r.summary && r.summary.pass) ? '通過' : '未通過') + '</td>' +
+                    '<td>' + ((r.summary && r.summary.score) != null ? r.summary.score : '—') + '</td><td>' + adj + '</td><td><strong>' + (t != null ? t : '—') + '</strong></td>' +
+                    '<td>' + r.measureCount + '/' + r.wireCount + '/' + r.repairMiss + '</td><td>' + ap + '</td>' +
+                    '<td class="row-btns no-print"><button ' + dis + ' onclick="TCH.adjust(' + i + ')">調分</button><button ' + dis + ' onclick="TCH.approve(' + i + ')">核章</button></td></tr>';
+            }).join('') || '<tr><td colspan="12">尚無紀錄（學生在本機繳交後會出現在此）</td></tr>';
+            var passN = rs.filter(function (r) { return r.summary && r.summary.pass; }).length;
+            document.getElementById('statLine').textContent = '共 ' + rs.length + ' 筆，通過 ' + passN + ' 筆';
+            // 雷達
+            var withParts = rs.filter(function (r) { return r.summary && r.summary.parts; });
+            if (withParts.length) {
+                var sum = [0, 0, 0, 0, 0];
+                withParts.forEach(function (r) { var a = axesOf(r); for (var i = 0; i < 5; i++) sum[i] += a[i]; });
+                var avg = sum.map(function (v) { return Math.round(v / withParts.length); });
+                document.getElementById('radarBox').innerHTML = radarSVG(avg) + '<div>樣本 ' + withParts.length + ' 筆，平均：' + AXES.map(function (a, i) { return a + avg[i]; }).join('／') + '</div>';
+            } else document.getElementById('radarBox').innerHTML = '尚無可計算樣本';
+            // 錯題統計
+            var byId = {};
+            rs.forEach(function (r) {
+                var k = r.faultConfigId || '(未知)';
+                byId[k] = byId[k] || { n: 0, pass: 0 };
+                byId[k].n++;
+                if (r.summary && r.summary.pass) byId[k].pass++;
+            });
+            document.querySelector('#missTable tbody').innerHTML = Object.keys(byId).map(function (k) {
+                var o = byId[k];
+                return '<tr><td>' + esc(k) + '</td><td>' + o.n + '</td><td>' + Math.round(o.pass / o.n * 100) + '%</td></tr>';
+            }).join('') || '<tr><td colspan="3">—</td></tr>';
+            // 題庫
+            document.querySelector('#bankTable tbody').innerHTML = HORN_BANK.items.map(function (it) {
                 var f = it.wiringTrap ? ('陷阱:' + it.wiringTrap) : it.faults.join(' + ');
                 return '<tr><td>' + it.id + '</td><td>' + it.track + '</td><td>' + it.level + '</td><td>' + it.modes.join('/') + '</td><td>' + f + '</td><td>' + it.symptoms + '</td></tr>';
+            }).join('');
+        }
+        function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+        function adjust(i) {
+            var rs = records();
+            var r = rs[i];
+            if (!r || r.approved) return;
+            var d = prompt('調分（-10～+10整數）：', '0');
+            if (d === null) return;
+            d = Math.max(-10, Math.min(10, parseInt(d, 10) || 0));
+            var c = prompt('調分說明：', '') || '';
+            var all = NTC_LOG.history();
+            var hit = all.find(function (x) { return x.sid === r.sid; });
+            if (hit) { hit.adjust = { delta: d, comment: c, at: new Date().toISOString() }; NTC_LOG.historySave(all); }
+            render();
+        }
+        function approve(i) {
+            var rs = records();
+            var r = rs[i];
+            if (!r || r.approved) return;
+            var code = prompt('核章代碼（例如教師英文簡稱＋日期）：', '');
+            if (!code) return;
+            var all = NTC_LOG.history();
+            var hit = all.find(function (x) { return x.sid === r.sid; });
+            if (hit) { hit.approved = { code: code, at: new Date().toISOString() }; NTC_LOG.historySave(all); }
+            render();
+        }
+        function exportCSV() {
+            var rs = records();
+            var bom = '﻿';
+            var head = '時間,班級,姓名,座號,試卷,故障ID,通過,初評,調分,總分,量測數,配線數,維修成功,試誤,用時秒,核章\n';
+            var rows = rs.map(function (r) {
+                var t = totalOf(r);
+                return [r.archivedAt, r.cls, r.name, r.seat, r.paper, r.faultConfigId, (r.summary && r.summary.pass) ? '通過' : '未通過',
+                    (r.summary && r.summary.score), (r.adjust && r.adjust.delta) || 0, t, r.measureCount, r.wireCount, r.repairOk, r.repairMiss,
+                    Math.round((r.durationMs || 0) / 1000), (r.approved && r.approved.code) || ''].join(',');
+            }).join('\n');
+            var blob = new Blob([bom + head + rows], { type: 'text/csv;charset=utf-8;' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = '成績總表.csv';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+        // ---- 證書（S6）：學期總證＋明細，本機核發 ----
+        function certRecords() {
+            var cls = document.getElementById('certCls').value.trim();
+            var seat = document.getElementById('certSeat').value.trim();
+            if (!cls || !seat) { alert('請輸入班級與座號'); return null; }
+            var all = NTC_LOG.history().filter(function (r) { return r.cls === cls && String(r.seat) === seat && r.approved; });
+            if (!all.length) { alert('該生尚無已核章紀錄'); return null; }
+            return all;
+        }
+        function certPreview() {
+            var all = certRecords();
+            if (!all) return;
+            var byUnit = {};
+            all.forEach(function (r) {
+                byUnit[r.unit] = byUnit[r.unit] || [];
+                byUnit[r.unit].push(r);
             });
-            tb.innerHTML = rows.join('');
-        })();
+            var rows = Object.keys(byUnit).map(function (u) {
+                var ts = byUnit[u].map(totalOf).filter(function (v) { return v != null; });
+                var best = ts.length ? Math.max.apply(null, ts) : '—';
+                return '<tr><td>' + esc(u) + '</td><td>' + byUnit[u].length + '</td><td>' + best + '</td></tr>';
+            }).join('');
+            var name = all[0].name;
+            document.getElementById('certBox').innerHTML =
+                '<h3>學習歷程證明（預覽）</h3>' +
+                '<p>學生：' + esc(all[0].cls) + ' ' + esc(name) + '（' + esc(all[0].seat) + '）</p>' +
+                '<table class="grades"><thead><tr><th>單元</th><th>核章筆數</th><th>最佳總分</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+                '<p>以已核章紀錄彙整，發證後鎖定不可改。</p>';
+        }
+        function hashStr(s) {
+            if (window.crypto && crypto.subtle && window.isSecureContext !== false) return null; // 改走 sha256
+            var h1 = 0x811c9dc5;
+            for (var i = 0; i < s.length; i++) { h1 ^= s.charCodeAt(i); h1 = Math.imul(h1, 0x01000193) >>> 0; }
+            return Promise.resolve(('0000000' + h1.toString(16)).slice(-8));
+        }
+        function sha256(s) {
+            if (window.crypto && crypto.subtle) {
+                return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function (buf) {
+                    return Array.from(new Uint8Array(buf)).map(function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+                });
+            }
+            return hashStr(s);
+        }
+        function certIssue() {
+            var all = certRecords();
+            if (!all) return;
+            var code = prompt('核發者代碼（教師簽章代碼）：', '');
+            if (!code) return;
+            var ts = all.map(totalOf).filter(function (v) { return v != null; });
+            var payload = {
+                certId: 'NTC-' + all[0].unit.toUpperCase() + '-' + new Date().getFullYear() + '-' + all[0].cls + all[0].seat,
+                cls: all[0].cls, name: all[0].name, seat: all[0].seat,
+                units: Object.keys(groupBy(all, 'unit')),
+                best: ts.length ? Math.max.apply(null, ts) : null,
+                count: all.length, teacher: code, at: new Date().toISOString()
+            };
+            var raw = [payload.certId, payload.cls, payload.seat, payload.best, payload.teacher, payload.at].join('|');
+            sha256(raw).then(function (h) {
+                payload.hash = h;
+                try {
+                    var k = 'ntc-cert-v1';
+                    var list = JSON.parse(localStorage.getItem(k) || '[]');
+                    list.push(payload);
+                    localStorage.setItem(k, JSON.stringify(list));
+                } catch (e) {}
+                alert('已核發，證書ID：' + payload.certId + '\n驗證碼：' + String(h).slice(0, 12));
+                certPreview();
+            });
+        }
+        function groupBy(arr, key) {
+            var o = {};
+            arr.forEach(function (x) { o[x[key]] = 1; });
+            return o;
+        }
+        render();
+        return { render: render, adjust: adjust, approve: approve, exportCSV: exportCSV, certPreview: certPreview, certIssue: certIssue };
+    })();
     </script>
 </body>
 </html>

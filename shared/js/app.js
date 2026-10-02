@@ -36,6 +36,7 @@
             document.getElementById('setupGuideBtn').classList.remove('hidden'); 
             document.getElementById('oemBtn').classList.remove('hidden');
             document.getElementById('submitAnswerBtn').classList.add('hidden');
+            document.getElementById('repairBtn').classList.add('hidden');
             document.getElementById('toPracticeBtn').classList.add('hidden');
             document.getElementById('loginModal').classList.add('hidden');
             if (window.NTC_LOG) NTC_LOG.setSession({ mode: 'practice' });
@@ -83,18 +84,21 @@
             const toPracticeBtn = document.getElementById('toPracticeBtn');
             const guideBtn = document.getElementById('setupGuideBtn');
 
+            const repairBtn = document.getElementById('repairBtn');
             if (isExam) {
                 faultBtn.classList.add('hidden');
                 toExamBtn.classList.add('hidden');
                 guideBtn.classList.add('hidden');
                 submitBtn.classList.remove('hidden');
                 toPracticeBtn.classList.remove('hidden');
+                repairBtn.classList.remove('hidden');
             } else {
                 faultBtn.classList.remove('hidden');
                 toExamBtn.classList.remove('hidden');
                 guideBtn.classList.remove('hidden');
                 submitBtn.classList.add('hidden');
                 toPracticeBtn.classList.add('hidden');
+                repairBtn.classList.add('hidden');
             }
             if (window.OEM) OEM.setExam(isExam);
         }
@@ -116,20 +120,25 @@
             studentInfo.name = document.getElementById('inputName').value;
             studentInfo.seat = document.getElementById('inputSeat').value;
             const paperCode = document.getElementById('inputPaper').value;
+            const levelCode = document.getElementById('inputLevel').value;
+            const _pool = levelCode === 'challenge' ? { track: 'C' } : levelCode === 'standard' ? { track: 'S', levels: ['標準'] } : { track: 'S', levels: ['基礎'] };
             const _ctx = { cls: studentInfo.class, seat: studentInfo.seat, paper: paperCode,
                 date: new Date().toISOString().slice(0,10) };
             
             if(!studentInfo.name) { alert("請輸入姓名"); return; }
             
             if (window.HORN_BANK && typeof window.HORN_BANK.assignFault === 'function') {
-                const _asg = window.HORN_BANK.assignFault(_ctx);
+                const _asg = window.HORN_BANK.assignFault(_ctx, _pool);
                 currentActiveFault = _asg.faultId;
-                if (window.NTC_LOG) { NTC_LOG.clear(); NTC_LOG.setSession({ mode: 'exam', student: { cls: studentInfo.class, name: studentInfo.name, seat: studentInfo.seat }, paper: paperCode, faultConfigId: _asg.configId, faultId: _asg.faultId }); NTC_LOG.log('exam_start', { paper: paperCode, faultConfigId: _asg.configId }); }
+                try { window.__NTC_LAST_ITEM = _asg.item; } catch (e) {}
+                initRepairProgress(_asg.item);
+                if (window.NTC_LOG) { NTC_LOG.clear(); NTC_LOG.setSession({ mode: 'exam', level: levelCode, student: { cls: studentInfo.class, name: studentInfo.name, seat: studentInfo.seat }, paper: paperCode, faultConfigId: _asg.configId, faultId: _asg.faultId }); NTC_LOG.log('exam_start', { paper: paperCode, faultConfigId: _asg.configId, level: levelCode }); }
             } else {
                 const _s = (_ctx.cls || '') + '|' + (_ctx.seat || '') + '|' + (_ctx.paper || '') + '|' + (_ctx.date || '');
                 let _h = 5381;
                 for (let _i = 0; _i < _s.length; _i++) _h = (((_h << 5) + _h) + _s.charCodeAt(_i)) >>> 0;
                 currentActiveFault = faultOptions[_h % faultOptions.length].id;
+                try { repairProgress = null; } catch (e) {}
             }
             try { window.__NTC_LAST_CTX = _ctx; } catch (e) {}
             updateFaultStateFromRandom();
@@ -225,11 +234,157 @@
             if(currentActiveFault === 'wireC_open') faultState.wireC = 'Open';
         }
 
+        // P2 複合故障＋分段維修：同時設定多個故障；repairProgress 追蹤各階段
+        let repairProgress = null; // {configId, stages:[{fault,repair,done}], parallel}
+        function applyFaultCode(code) {
+            if (FAULT_PICK_MAP[code]) faultState[FAULT_PICK_MAP[code][0]] = FAULT_PICK_MAP[code][1];
+        }
+        function applyFaultList(list) {
+            faultState = freshFaultState();
+            (list || []).forEach(applyFaultCode);
+        }
+        function initRepairProgress(item) {
+            repairProgress = null;
+            if (!item || item.track !== 'C' || !item.stages) {
+                updateFaultStateFromRandom();
+                return;
+            }
+            applyFaultList(item.faults);
+            currentActiveFault = '__multi__';
+            repairProgress = { configId: item.id, parallel: !!item.parallel, stages: item.stages.map(s => ({ fault: s.fault, repair: s.repair, done: false })) };
+        }
+        function repairStageDoneCount() {
+            if (!repairProgress) return 0;
+            return repairProgress.stages.filter(s => s.done).length;
+        }
+        // 申請維修：repairKey 來自 REPAIR_CATALOG；回傳 {ok, msg}
+        function requestRepair(repairKey) {
+            if (!repairProgress) return { ok: false, msg: '本次考評無需維修，直接繳交診斷報告即可。' };
+            const cat = (window.HORN_BANK && window.HORN_BANK.REPAIR_CATALOG) || [];
+            const entry = cat.find(c => c.key === repairKey);
+            if (!entry) return { ok: false, msg: '未知的維修項目。' };
+            const openStages = repairProgress.stages.map((s, i) => ({ s, i })).filter(o => !o.s.done);
+            if (!openStages.length) return { ok: false, msg: '所有階段皆已修復，請繳交診斷報告。' };
+            // 非並聯題只能修當前第一階段；並聯題任一未修階段皆可
+            const candidates = repairProgress.parallel ? openStages : [openStages[0]];
+            const hit = candidates.find(o => entry.fixes.includes(o.s.fault));
+            if (window.NTC_LOG) NTC_LOG.log(hit ? 'repair_ok' : 'repair_miss', { repair: repairKey, stage: hit ? hit.i : candidates[0].i });
+            if (!hit) return { ok: false, msg: '更換後故障依舊（試誤一次，已記錄）。請重新量測確認。' };
+            hit.s.done = true;
+            const inv = FAULT_PICK_MAP[hit.s.fault];
+            if (inv) faultState[inv[0]] = 'Normal';
+            runSimulation();
+            const left = repairProgress.stages.filter(s => !s.done).length;
+            return { ok: true, msg: '維修成功：' + entry.label + '完成，相關故障已排除。' + (left ? '還有 ' + left + ' 個階段，請繼續查修。' : '全部修復完成，請繳交診斷報告。') };
+        }
+
         document.getElementById('faultBtn').addEventListener('click', () => { document.getElementById('faultPanel').classList.toggle('visible'); });
-        document.getElementById('submitAnswerBtn').addEventListener('click', () => { document.getElementById('quizModal').classList.remove('hidden'); });
+        document.getElementById('submitAnswerBtn').addEventListener('click', () => { openQuizModal(); });
         document.getElementById('cancelSubmitBtn').addEventListener('click', () => { document.getElementById('quizModal').classList.add('hidden'); });
+        document.getElementById('repairBtn').addEventListener('click', () => { openRepairModal(); });
+        document.getElementById('cancelRepairBtn').addEventListener('click', () => { document.getElementById('repairModal').classList.add('hidden'); });
+
+        // P2-S3：複選診斷＋證據＋維修 modal
+        const EVIDENCE_NODES = [
+            ['bat_pos','電瓶正極'],['fuse_link_in','易熔絲入端'],['fuse_link_out','易熔絲出端'],
+            ['fuse_in','保險絲入端'],['fuse_out','保險絲出端'],['relay_86','繼電器86'],['relay_85','繼電器85'],
+            ['relay_30','繼電器30'],['relay_87','繼電器87'],['btn_in','按鈕入端'],['btn_out','按鈕出端'],
+            ['horn1_in','上喇叭正端'],['horn1_gnd','上喇叭搭鐵'],['horn2_in','下喇叭正端'],['horn2_gnd','下喇叭搭鐵']
+        ];
+        function faultLabel(id) {
+            const f = faultOptions.find(x => x.id === id);
+            if (f) return f.label;
+            const L = (window.HORN_BANK && window.HORN_BANK.LABELS) || {};
+            return L[id] || id;
+        }
+        function openQuizModal() {
+            const multi = !!repairProgress;
+            document.getElementById('quizSingle').classList.toggle('hidden', multi);
+            document.getElementById('quizMulti').classList.toggle('hidden', !multi);
+            document.getElementById('quizHint').textContent = multi ? '複合故障診斷：勾選所有找出的故障＋量測證據' : '請根據檢測結果，選擇電路的故障原因：';
+            if (multi) buildMultiQuiz();
+            document.getElementById('quizModal').classList.remove('hidden');
+        }
+        function buildMultiQuiz() {
+            const doneFaults = repairProgress.stages.filter(s => s.done).map(s => s.fault);
+            const allFaults = ['normal','fuse_link_open','fuse_open','relay_coil_open','relay_switch_fail','btn_open','horn1_open','horn2_open','wireA_open','wireB_open','wireC_open'];
+            document.getElementById('quizMultiFaults').innerHTML = allFaults.map(f => {
+                const dis = doneFaults.includes(f) ? ' checked disabled' : '';
+                return `<div class="radio-item"><label><input type="checkbox" name="mdiag" value="${f}"${dis}> ${faultLabel(f)}${doneFaults.includes(f) ? '（已維修✓）' : ''}</label></div>`;
+            }).join('');
+            document.getElementById('quizEvidence').innerHTML = EVIDENCE_NODES.map(n => `<div class="radio-item"><label><input type="checkbox" name="mevd" value="${n[0]}"> ${n[1]}</label></div>`).join('');
+        }
+        function stageHtml() {
+            const st = repairProgress.stages.map((s, i) => `${i + 1}. ${faultLabel(s.fault)}：${s.done ? '已修復✓' : '待查修'}`).join('<br>');
+            return `<strong>${repairProgress.configId} 階段進度</strong><br>${st}`;
+        }
+        function openRepairModal() {
+            if (!repairProgress) { alert('本次考評為單一故障，無需維修，直接繳交診斷報告即可。'); return; }
+            document.getElementById('repairStages').innerHTML = stageHtml();
+            const cat = window.HORN_BANK.REPAIR_CATALOG;
+            document.getElementById('repairList').innerHTML = cat.map(c => `<div class="radio-item repair-item"><label><input type="radio" name="rep" value="${c.key}"> ${c.label}</label></div>`).join('') + `<button class="btn-primary" onclick="doRepair()">確認更換</button>`;
+            document.getElementById('repairMsg').textContent = '';
+            document.getElementById('repairModal').classList.remove('hidden');
+        }
+        function doRepair() {
+            const sel = document.querySelector('input[name="rep"]:checked');
+            const msg = document.getElementById('repairMsg');
+            if (!sel) { msg.textContent = '請先選擇要更換的零件。'; msg.style.color = '#c0392b'; return; }
+            const r = requestRepair(sel.value);
+            msg.textContent = r.msg;
+            msg.style.color = r.ok ? '#27ae60' : '#c0392b';
+            if (r.ok) document.getElementById('repairStages').innerHTML = stageHtml();
+        }
+        function evaluateMulti() {
+            const item = window.__NTC_LAST_ITEM || {};
+            const correct = item.faults || [];
+            const checked = Array.from(document.querySelectorAll('input[name="mdiag"]:checked')).map(x => x.value);
+            const evd = Array.from(document.querySelectorAll('input[name="mevd"]:checked')).map(x => x.value);
+            const hits = correct.filter(f => checked.includes(f));
+            const extras = checked.filter(f => f !== 'normal' && !correct.includes(f));
+            const evHits = (item.evidencePoints || []).filter(p => evd.includes(p));
+            const pass = hits.length === correct.length && extras.length === 0 && evd.length >= 2 && evHits.length >= 1;
+            return { correct, checked, evd, hits, extras, evHits, pass };
+        }
+        function submitMulti() {
+            const ev = evaluateMulti();
+            const item = window.__NTC_LAST_ITEM || {};
+            const resultTitle = document.getElementById('resultTitle');
+            const resultText = document.getElementById('resultText');
+            const resultDetails = document.getElementById('resultDetails');
+            const list = (arr) => arr.map(faultLabel).join('、') || '（無）';
+            if (ev.pass) { resultTitle.textContent = "🎉 恭喜！診斷正確"; resultTitle.className = "result-success"; resultText.textContent = "複合故障全部找出，證據充分！"; }
+            else { resultTitle.textContent = "❌ 診斷未完全正確"; resultTitle.className = "result-fail"; resultText.textContent = "故障或證據有缺漏，請看明細。"; }
+            const rOk = window.NTC_LOG ? NTC_LOG.count('repair_ok') : 0;
+            const rMiss = window.NTC_LOG ? NTC_LOG.count('repair_miss') : 0;
+            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class} ${studentInfo.name}<br><strong>找出的故障：</strong>${list(ev.checked)}<br><strong>正確故障：</strong><span style="color:red">${list(ev.correct)}</span><br><strong>量測證據：</strong>${ev.evd.length} 點（命中關鍵 ${ev.evHits.length}）<br><strong>維修紀錄：</strong>成功 ${rOk}／試誤 ${rMiss}`;
+            lastResultData = { studentClass: studentInfo.class, studentName: studentInfo.name, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: list(ev.correct) };
+            finishSubmit({ choice: ev.checked.join('+'), correct: ev.pass });
+        }
+        function finishSubmit(extra) {
+            if (window.NTC_LOG) {
+                lastResultData.measureCount = NTC_LOG.count('probe_measure');
+                lastResultData.wireCount = NTC_LOG.count('wire_connect');
+                lastResultData.hintCount = 0;
+                lastResultData.logEvents = NTC_LOG.exportData().events.length;
+                lastResultData.durationMs = NTC_LOG.elapsed();
+                lastResultData.level = (NTC_LOG.session && NTC_LOG.session.level) || '';
+                lastResultData.resubmits = NTC_LOG.count('diagnosis_submit');
+                if (window.ASSESS && typeof ASSESS.score === 'function') lastResultData.score = ASSESS.score(lastResultData);
+                NTC_LOG.log('diagnosis_submit', Object.assign({ measureCount: lastResultData.measureCount, wireCount: lastResultData.wireCount }, extra || {}));
+                NTC_LOG.archive({ pass: !!lastResultData.isPass, score: (lastResultData.score && lastResultData.score.total) || null, parts: (lastResultData.score && lastResultData.score.parts) || null, multi: !!lastResultData.multi });
+            }
+            if (lastResultData.score) {
+                const s = lastResultData.score;
+                const rows = Object.keys(s.parts).map(k => `${k}：${s.parts[k]}`).join('<br>');
+                document.getElementById('resultDetails').innerHTML += `<br><br><strong>評分（初評）：${s.total} 分</strong><br>${rows}`;
+            }
+            document.getElementById('quizModal').classList.add('hidden');
+            document.getElementById('resultModal').classList.remove('hidden');
+        }
 
         document.getElementById('confirmSubmitBtn').addEventListener('click', () => {
+            if (repairProgress) { submitMulti(); return; }
             const selected = document.querySelector('input[name="diagnosis"]:checked');
             if (!selected) { alert("請選擇一個診斷結果！"); return; }
             const userChoice = selected.value;
@@ -245,17 +400,8 @@
             const userLabel = faultOptions.find(f => f.id === userChoice).label;
             resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class} ${studentInfo.name}<br><strong>您的答案：</strong>${userLabel}<br><strong>正確答案：</strong><span style="color:red">${correctLabel}</span>`;
             
-            lastResultData = { studentClass: studentInfo.class, studentName: studentInfo.name, seatNumber: studentInfo.seat, userDiagnosis: userLabel, correctFault: correctLabel, isPass: isCorrect };
-            if (window.NTC_LOG) {
-                const _lg = NTC_LOG.exportData();
-                lastResultData.measureCount = NTC_LOG.count('probe_measure');
-                lastResultData.wireCount = NTC_LOG.count('wire_connect');
-                lastResultData.hintCount = 0;
-                lastResultData.logEvents = _lg.events.length;
-                NTC_LOG.log('diagnosis_submit', { choice: userChoice, correct: isCorrect, measureCount: lastResultData.measureCount, wireCount: lastResultData.wireCount });
-            }
-            document.getElementById('quizModal').classList.add('hidden');
-            document.getElementById('resultModal').classList.remove('hidden');
+            lastResultData = { studentClass: studentInfo.class, studentName: studentInfo.name, seatNumber: studentInfo.seat, multi: false, track: 'S', userDiagnosis: userLabel, correctFault: correctLabel, isPass: isCorrect };
+            finishSubmit({ choice: userChoice, correct: isCorrect });
         });
 
         function downloadCSV() {

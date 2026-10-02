@@ -32,10 +32,10 @@ window.HORN_BANK = (function () {
     { id: 'HORN-S-06', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['btn_open'], wiringTrap: null, symptoms: '按鈕按下線圈迴路不通', evidencePoints: ['btn_in', 'btn_out'], weight: 1, hintLevel: 2, enabled: true },
     { id: 'HORN-S-07', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['horn1_open'], wiringTrap: null, symptoms: '僅下喇叭響', evidencePoints: ['horn1_in', 'horn1_gnd'], weight: 1, hintLevel: 2, enabled: true },
     { id: 'HORN-S-08', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['horn2_open'], wiringTrap: null, symptoms: '僅上喇叭響', evidencePoints: ['horn2_in', 'horn2_gnd'], weight: 1, hintLevel: 2, enabled: true },
-    { id: 'HORN-C-01', track: 'C', level: '挑戰', modes: ['查修', '綜合'], faults: ['relay_coil_open', 'horn2_open'], wiringTrap: null, symptoms: '繼電器不吸合（主因）；修復後仍僅上喇叭響', evidencePoints: ['relay_86', 'horn2_in'], weight: 2, hintLevel: 3, enabled: true },
-    { id: 'HORN-C-02', track: 'C', level: '挑戰', modes: ['查修', '綜合'], faults: ['fuse_open', 'btn_open'], wiringTrap: null, symptoms: '全迴路無電（主因）；修復後按鈕仍不通', evidencePoints: ['fuse_out', 'btn_out'], weight: 2, hintLevel: 3, enabled: true },
-    { id: 'HORN-C-03', track: 'C', level: '挑戰', modes: ['查修', '綜合'], faults: ['relay_switch_fail', 'horn1_open'], wiringTrap: null, symptoms: '繼電器吸合但無聲（主因）；修復後僅下喇叭響', evidencePoints: ['relay_87', 'horn1_in'], weight: 2, hintLevel: 3, enabled: true },
-    { id: 'HORN-C-04', track: 'C', level: '挑戰', modes: ['查修', '綜合'], faults: ['horn1_open', 'horn2_open'], wiringTrap: null, symptoms: '繼電器正常吸合但雙喇叭皆不響', evidencePoints: ['relay_87', 'horn1_in', 'horn2_in'], weight: 2, hintLevel: 3, enabled: true },
+    { id: 'HORN-C-01', track: 'C', level: '挑戰', modes: ['查修', '綜合'], faults: ['relay_coil_open', 'horn2_open'], wiringTrap: null, symptoms: '繼電器不吸合（主因）；修復後仍僅上喇叭響', evidencePoints: ['relay_86', 'horn2_in'], weight: 2, hintLevel: 3, enabled: true, stages: [{ fault: 'relay_coil_open', repair: 'relay' }, { fault: 'horn2_open', repair: 'horn2' }] },
+    { id: 'HORN-C-02', track: 'C', level: '挑戰', modes: ['查修', '綜合'], faults: ['fuse_open', 'btn_open'], wiringTrap: null, symptoms: '全迴路無電（主因）；修復後按鈕仍不通', evidencePoints: ['fuse_out', 'btn_out'], weight: 2, hintLevel: 3, enabled: true, stages: [{ fault: 'fuse_open', repair: 'fuse' }, { fault: 'btn_open', repair: 'button' }] },
+    { id: 'HORN-C-03', track: 'C', level: '挑戰', modes: ['查修', '綜合'], faults: ['relay_switch_fail', 'horn1_open'], wiringTrap: null, symptoms: '繼電器吸合但無聲（主因）；修復後僅下喇叭響', evidencePoints: ['relay_87', 'horn1_in'], weight: 2, hintLevel: 3, enabled: true, stages: [{ fault: 'relay_switch_fail', repair: 'relay' }, { fault: 'horn1_open', repair: 'horn1' }] },
+    { id: 'HORN-C-04', track: 'C', level: '挑戰', modes: ['查修', '綜合'], faults: ['horn1_open', 'horn2_open'], wiringTrap: null, symptoms: '繼電器正常吸合但雙喇叭皆不響', evidencePoints: ['relay_87', 'horn1_in', 'horn2_in'], weight: 2, hintLevel: 3, enabled: true, parallel: true, stages: [{ fault: 'horn1_open', repair: 'horn1' }, { fault: 'horn2_open', repair: 'horn2' }] },
     { id: 'HORN-W-01', track: 'W', level: '標準', modes: ['綜合'], faults: ['normal'], wiringTrap: 'ground_missing', symptoms: '喇叭搭鐵漏接、時響時不響', evidencePoints: ['horn1_gnd', 'horn2_gnd'], weight: 1, hintLevel: 2, enabled: true },
     { id: 'HORN-W-02', track: 'W', level: '挑戰', modes: ['綜合'], faults: ['normal'], wiringTrap: 'relay_30_87_swapped', symptoms: '繼電器 30/87 對調、主迴路異常', evidencePoints: ['relay_30', 'relay_87'], weight: 1, hintLevel: 3, enabled: true },
     { id: 'HORN-W-03', track: 'W', level: '標準', modes: ['查修', '綜合'], faults: ['wireA_open'], wiringTrap: null, symptoms: '易熔絲入端無電（電瓶→保險絲段配線斷，須先配好該段線才會發作）', evidencePoints: ['bat_pos', 'fuse_link_in'], weight: 1, hintLevel: 2, enabled: true },
@@ -49,17 +49,32 @@ window.HORN_BANK = (function () {
     return h;
   }
 
-  // 依班級+座號+試卷+日期均勻指派；預設僅 S 軌（8 題全覆蓋，修掉舊版缺號問題）
+  // 維修目錄：維修動作 key → 可修復的故障碼（P2 維修解鎖用）
+  var REPAIR_CATALOG = [
+    { key: 'fuselink', label: '換易熔絲', fixes: ['fuse_link_open'] },
+    { key: 'fuse', label: '換保險絲', fixes: ['fuse_open'] },
+    { key: 'relay', label: '換繼電器', fixes: ['relay_coil_open', 'relay_switch_fail'] },
+    { key: 'button', label: '換按鈕開關', fixes: ['btn_open'] },
+    { key: 'horn1', label: '換上喇叭', fixes: ['horn1_open'] },
+    { key: 'horn2', label: '換下喇叭', fixes: ['horn2_open'] },
+    { key: 'wireA', label: '換線束A', fixes: ['wireA_open'] },
+    { key: 'wireB', label: '換線束B', fixes: ['wireB_open'] },
+    { key: 'wireC', label: '換線束C', fixes: ['wireC_open'] }
+  ];
+
+  // 依班級+座號+試卷+日期均勻指派；opts：{track, levels[]}，預設 S 軌
   function assignFault(ctx, opts) {
     ctx = ctx || {};
     opts = opts || {};
     var pool = items.filter(function (it) {
       if (it.enabled === false) return false;
-      if (opts.track) return it.track === opts.track;
-      return it.track === 'S';
+      if (opts.track && it.track !== opts.track) return false;
+      if (!opts.track && it.track !== 'S') return false;
+      if (opts.levels && opts.levels.indexOf(it.level) < 0) return false;
+      return true;
     });
     if (!pool.length) pool = items.slice(0, 8);
-    var key = (ctx.cls || '') + '|' + (ctx.seat || '') + '|' + (ctx.paper || '') + '|' + (ctx.date || '');
+    var key = (ctx.cls || '') + '|' + (ctx.seat || '') + '|' + (ctx.paper || '') + '|' + (ctx.date || '') + '|' + (opts.track || 'S');
     var pick = pool[hashStr(key) % pool.length];
     return { configId: pick.id, faultId: pick.faults[0], item: pick };
   }
@@ -71,6 +86,7 @@ window.HORN_BANK = (function () {
 
   return {
     version: BANK_VERSION, items: items, FAULT_IDS: FAULT_IDS, LABELS: LABELS,
+    REPAIR_CATALOG: REPAIR_CATALOG,
     assignFault: assignFault, getById: getById, hashStr: hashStr
   };
 })();

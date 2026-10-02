@@ -34,6 +34,14 @@
                             <option value="E">E 卷</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label>難度</label>
+                        <select id="inputLevel">
+                            <option value="basic">基礎（單一故障・有提示）</option>
+                            <option value="standard">標準（單一故障）</option>
+                            <option value="challenge">挑戰（複合故障・分段維修）</option>
+                        </select>
+                    </div>
                     <button type="submit" class="btn-primary">開始考評</button>
                     <button type="button" class="btn-back" onclick="backToModeSelect()">返回上一頁</button>
                 </form>
@@ -44,8 +52,8 @@
     <div id="quizModal" class="modal-overlay hidden">
         <div class="modal-box">
             <h2>📝 提交診斷報告</h2>
-            <p>請根據檢測結果，選擇電路的故障原因：</p>
-            <div class="radio-group">
+            <p id="quizHint">請根據檢測結果，選擇電路的故障原因：</p>
+            <div class="radio-group" id="quizSingle">
                 <div class="radio-item"><label><input type="radio" name="diagnosis" value="normal"> 電路功能正常</label></div>
                 <div class="radio-item"><label><input type="radio" name="diagnosis" value="fuse_link_open"> 易熔絲斷路</label></div>
                 <div class="radio-item"><label><input type="radio" name="diagnosis" value="fuse_open"> 保險絲斷路</label></div>
@@ -55,8 +63,25 @@
                 <div class="radio-item"><label><input type="radio" name="diagnosis" value="horn1_open"> 上喇叭內部線圈斷路</label></div>
                 <div class="radio-item"><label><input type="radio" name="diagnosis" value="horn2_open"> 下喇叭內部線圈斷路</label></div>
             </div>
+            <div id="quizMulti" class="hidden">
+                <p><strong>本題為複合故障</strong>：已維修階段由系統自動帶入，請勾選<strong>所有</strong>找出的故障（含已修復）：</p>
+                <div class="radio-group" id="quizMultiFaults"></div>
+                <p><strong>關鍵量測證據</strong>（至少勾選 2 個支持你診斷的量測點）：</p>
+                <div class="radio-group" id="quizEvidence"></div>
+            </div>
             <button id="confirmSubmitBtn" class="btn-primary">確認送出</button>
             <button id="cancelSubmitBtn" style="margin-top:10px; background:#95a5a6; border:none; padding:8px; width:100%; border-radius:5px; cursor:pointer; color:white;">取消</button>
+        </div>
+    </div>
+
+    <div id="repairModal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h2>🔧 申請維修</h2>
+            <div id="repairStages" style="text-align:left; background:#ecf0f1; padding:10px; border-radius:5px; margin-bottom:12px;"></div>
+            <p>選擇更換的零件（選錯會記試誤一次）：</p>
+            <div class="radio-group" id="repairList"></div>
+            <p id="repairMsg" style="min-height:24px; font-weight:bold;"></p>
+            <button id="cancelRepairBtn" style="margin-top:6px; background:#95a5a6; border:none; padding:8px; width:100%; border-radius:5px; cursor:pointer; color:white;">關閉</button>
         </div>
     </div>
 
@@ -119,6 +144,7 @@
                 <button id="faultBtn" class="action-btn btn-fault hidden">故障設定</button>
                 <button id="toExamBtn" class="action-btn btn-switch hidden" onclick="switchModeToExam()">切換至考評模式</button>
                 <button id="submitAnswerBtn" class="action-btn btn-submit hidden">繳交診斷報告</button>
+                <button id="repairBtn" class="action-btn btn-repair hidden">申請維修</button>
                 <button id="toPracticeBtn" class="action-btn btn-switch hidden" onclick="switchModeToPractice()">切換至練習模式</button>
                 <button id="setupGuideBtn" class="action-btn btn-guide hidden" onclick="openSetupGuide()">☁️ 雲端設定教學</button>
                 <button id="oemBtn" class="action-btn btn-oem hidden" onclick="OEM.toggle()">📖 線路圖</button>
@@ -206,6 +232,7 @@
     <script src="units/horn/exam_bank.js"></script>
     <script src="shared/js/logger.js"></script>
     <script src="shared/js/oem.js"></script>
+    <script src="shared/js/assessment.js"></script>
     <script src="shared/js/app.js"></script>
 </body>
 </html>

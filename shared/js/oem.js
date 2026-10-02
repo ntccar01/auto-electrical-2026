@@ -2,7 +2,7 @@
  * 可拖曳・縮放・最小化・線路圖/正常值分頁。考評模式隱藏（P2 接難度連動）。
  */
 window.OEM = (function () {
-  var W = 380, MINW = 280, MAXW = 640;
+  var W = 380, MINW = 280, MAXW = 800;
   function el(id) { return document.getElementById(id); }
 
   function toggle(force) {

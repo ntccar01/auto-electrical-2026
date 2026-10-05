@@ -50,8 +50,14 @@
             <tbody></tbody>
         </table>
 
-        <h2>5. 喇叭題庫一覽</h2>
+        <h2>5. 題庫一覽</h2>
+        <h3>喇叭單元</h3>
         <table class="bank" id="bankTable">
+            <thead><tr><th>ID</th><th>軌</th><th>等級</th><th>適用</th><th>故障 / 陷阱</th><th>症狀</th></tr></thead>
+            <tbody></tbody>
+        </table>
+        <h3>起動單元</h3>
+        <table class="bank" id="bankTableStart">
             <thead><tr><th>ID</th><th>軌</th><th>等級</th><th>適用</th><th>故障 / 陷阱</th><th>症狀</th></tr></thead>
             <tbody></tbody>
         </table>
@@ -70,6 +76,7 @@
     </div>
     <script src="shared/js/config.js"></script>
     <script src="units/horn/exam_bank.js"></script>
+    <script src="units/start/exam_bank.js"></script>
     <script src="shared/js/logger.js"></script>
     <script>
     window.TCH = (function () {
@@ -171,6 +178,12 @@
                 var f = it.wiringTrap ? ('陷阱:' + it.wiringTrap) : it.faults.join(' + ');
                 return '<tr><td>' + it.id + '</td><td>' + it.track + '</td><td>' + it.level + '</td><td>' + it.modes.join('/') + '</td><td>' + f + '</td><td>' + it.symptoms + '</td></tr>';
             }).join('');
+            if (window.START_BANK) {
+                document.querySelector('#bankTableStart tbody').innerHTML = START_BANK.items.map(function (it) {
+                    var f = it.wiringTrap ? ('陷阱:' + it.wiringTrap) : it.faults.join(' + ');
+                    return '<tr><td>' + it.id + '</td><td>' + it.track + '</td><td>' + it.level + '</td><td>' + it.modes.join('/') + '</td><td>' + f + '</td><td>' + it.symptoms + '</td></tr>';
+                }).join('');
+            }
         }
         function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
         function adjust(i) {

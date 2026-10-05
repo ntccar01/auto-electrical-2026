@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>起動系統配線模擬器_V2</title>
+    <link rel="stylesheet" href="../../css/style.css">
+</head>
+<body>
+
+    <div id="loginModal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>🚗 起動系統教學模擬</h2>
+            <div id="stepSelectMode">
+                <p>請選擇操作模式</p>
+                <div class="mode-selection-btns">
+                    <button class="btn-mode btn-practice" onclick="choosePracticeMode()">🔨 進入練習模式</button>
+                    <button class="btn-mode btn-exam" onclick="chooseExamMode()">📝 進入考評模式</button>
+                </div>
+            </div>
+            <div id="stepLogin" class="hidden">
+                <p>請輸入考生資料</p>
+                <form id="loginForm">
+                    <div class="form-group"><label>班級</label><input type="text" id="inputClass" required></div>
+                    <div class="form-group"><label>姓名</label><input type="text" id="inputName" required></div>
+                    <div class="form-group"><label>座號</label><input type="number" id="inputSeat" required></div>
+                    <div class="form-group">
+                        <label>試卷別</label>
+                        <select id="inputPaper">
+                            <option value="A">A 卷</option>
+                            <option value="B">B 卷</option>
+                            <option value="C">C 卷</option>
+                            <option value="D">D 卷</option>
+                            <option value="E">E 卷</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>難度</label>
+                        <select id="inputLevel">
+                            <option value="basic">基礎（單一故障・有提示）</option>
+                            <option value="standard">標準（單一故障）</option>
+                        </select>
+                        <p style="font-size:12px;color:#7f8c8d;">挑戰（複合故障）第二輪開放</p>
+                    </div>
+                    <button type="submit" class="btn-primary">開始考評</button>
+                    <button type="button" class="btn-back" onclick="backToModeSelect()">返回上一頁</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="quizModal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h2>📝 提交診斷報告</h2>
+            <p id="quizHint">請根據檢測結果，選擇電路的故障原因：</p>
+            <div class="radio-group" id="quizSingle">
+                <div class="radio-item"><label><input type="radio" name="diagnosis" value="normal"> 電路功能正常</label></div>
+                <div class="radio-item"><label><input type="radio" name="diagnosis" value="fuse_open"> 保險絲斷路</label></div>
+                <div class="radio-item"><label><input type="radio" name="diagnosis" value="battB_open"> B主電源線斷路（保險絲→電磁B）</label></div>
+                <div class="radio-item"><label><input type="radio" name="diagnosis" value="ns_open"> 空檔開關故障</label></div>
+                <div class="radio-item"><label><input type="radio" name="diagnosis" value="solHold_open"> 吸住線圈斷路</label></div>
+                <div class="radio-item"><label><input type="radio" name="diagnosis" value="solPull_open"> 吸入線圈斷路</label></div>
+                <div class="radio-item"><label><input type="radio" name="diagnosis" value="bm_fail"> B-M接點燒蝕</label></div>
+                <div class="radio-item"><label><input type="radio" name="diagnosis" value="mot_open"> 馬達本體斷路</label></div>
+            </div>
+            <div id="quizMulti" class="hidden">
+                <p><strong>本題為複合故障</strong>：已維修階段由系統自動帶入，請勾選<strong>所有</strong>找出的故障（含已修復）：</p>
+                <div class="radio-group" id="quizMultiFaults"></div>
+                <p><strong>關鍵量測證據</strong>（至少勾選 2 個支持你診斷的量測點）：</p>
+                <div class="radio-group" id="quizEvidence"></div>
+            </div>
+            <button id="confirmSubmitBtn" class="btn-primary">確認送出</button>
+            <button id="cancelSubmitBtn" style="margin-top:10px; background:#95a5a6; border:none; padding:8px; width:100%; border-radius:5px; cursor:pointer; color:white;">取消</button>
+        </div>
+    </div>
+
+    <div id="repairModal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h2>🔧 申請維修</h2>
+            <div id="repairStages" style="text-align:left; background:#ecf0f1; padding:10px; border-radius:5px; margin-bottom:12px;"></div>
+            <p>選擇更換的零件（選錯會記試誤一次）：</p>
+            <div class="radio-group" id="repairList"></div>
+            <p id="repairMsg" style="min-height:24px; font-weight:bold;"></p>
+            <button id="cancelRepairBtn" style="margin-top:6px; background:#95a5a6; border:none; padding:8px; width:100%; border-radius:5px; cursor:pointer; color:white;">關閉</button>
+        </div>
+    </div>
+
+    <div id="resultModal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h2 id="resultTitle">診斷結果</h2>
+            <p id="resultText"></p>
+            <div id="resultDetails" style="text-align:left; background:#ecf0f1; padding:10px; border-radius:5px; margin-bottom:20px;"></div>
+            <div class="result-actions">
+                <button onclick="uploadToGoogle()" class="btn-upload">☁️ 上傳成績</button>
+                <button onclick="downloadCSV()" class="btn-download">💾 下載 CSV</button>
+                <button onclick="location.reload()" class="btn-restart">🔄 重新開始</button>
+            </div>
+        </div>
+    </div>
+
+    <h2>起動系統配線模擬器（V2 起動單元）</h2>
+    <div class="status-bar">
+        <span id="modeDisplay" class="mode-indicator">等待登入</span>
+        <span id="studentDisplay"></span>
+        <span id="statusMsg">請連接線路進行測試。</span>
+    </div>
+    <div class="control-bar">
+        <span>點火開關：</span><button id="igOffBtn" class="ctl-btn active" onclick="setIgnition('OFF')">OFF</button><button id="igOnBtn" class="ctl-btn" onclick="setIgnition('IG')">IG/ON</button><button id="igStBtn" class="ctl-btn">按住ST啟動</button>
+        <span style="margin-left:12px">檔位：</span><button class="ctl-btn gear active" data-g="P" onclick="setGear('P')">P</button><button class="ctl-btn gear" data-g="R" onclick="setGear('R')">R</button><button class="ctl-btn gear" data-g="N" onclick="setGear('N')">N</button><button class="ctl-btn gear" data-g="D" onclick="setGear('D')">D</button>
+        <span style="margin-left:12px">起動電流：<strong id="crankAmps">0</strong> A</span>
+    </div>
+
+    <div class="main-layout">
+        <div class="circuit-area">
+            <svg id="circuitSvg" width="800" height="500" viewBox="0 0 800 500">
+                <g id="wire-layer"></g>
+                <defs>
+                    <g id="std-ground"><line x1="0" y1="0" x2="0" y2="20" stroke="black" stroke-width="2"/><line x1="-15" y1="20" x2="15" y2="20" style="stroke:#000;stroke-width:2;stroke-linecap:round;"/><line x1="-10" y1="25" x2="10" y2="25" style="stroke:#000;stroke-width:2;stroke-linecap:round;"/><line x1="-5" y1="30" x2="5" y2="30" style="stroke:#000;stroke-width:2;stroke-linecap:round;"/></g>
+                    <g id="wifi-icon-template"><path class="wifi-arc arc1" d="M 0 -12 Q 16 0 0 12" stroke-width="4"/><path class="wifi-arc arc2" d="M 10 -24 Q 36 0 10 24" stroke-width="4"/><path class="wifi-arc arc3" d="M 20 -36 Q 56 0 20 36" stroke-width="4"/></g>
+                </defs>
+                <g id="battery" transform="translate(50, 290)"><rect width="60" height="100" class="component-body"/><text x="30" y="50" class="text-label" dominant-baseline="middle" text-anchor="middle" dy="1">電瓶</text><circle cx="30" cy="0" r="4" class="conn-point" data-id="bat_pos"/><circle cx="30" cy="100" r="4" class="conn-point" data-id="bat_neg"/><use href="#std-ground" x="30" y="105"/></g>
+                
+                <g id="fuse" transform="translate(140, 140)"><path id="path_fuse" d="M0,10 Q6.25,0 12.5,10 T25,10 T37.5,10 T50,10" class="component-internal"/><circle cx="0" cy="10" r="4" class="conn-point" data-id="fuse_in"/><circle cx="50" cy="10" r="4" class="conn-point" data-id="fuse_out"/><text x="25" y="-8" text-anchor="middle" font-size="12">保險絲</text></g>
+                
+                <g id="ignition" transform="translate(400, 70)">
+                    <rect width="110" height="80" class="component-body"/>
+                    <circle cx="55" cy="36" r="20" fill="#fff" stroke="#000" stroke-width="2"/>
+                    <text x="55" y="42" text-anchor="middle" font-size="15" font-weight="bold" id="igPosText">OFF</text>
+                    <text x="55" y="72" text-anchor="middle" font-size="12">點火開關</text>
+                    <circle cx="-5" cy="55" r="4" class="conn-point" data-id="ig_B"/>
+                    <circle cx="115" cy="55" r="4" class="conn-point" data-id="ig_IG"/>
+                    <circle cx="115" cy="12" r="4" class="conn-point" data-id="ig_ST"/>
+                </g>
+                <g id="neutral" transform="translate(650, 80)">
+                    <rect width="80" height="60" class="component-body"/>
+                    <text x="40" y="28" text-anchor="middle" font-size="16" font-weight="bold" id="nsPosText">P</text>
+                    <text x="40" y="50" text-anchor="middle" font-size="11">空檔開關</text>
+                    <circle cx="-5" cy="30" r="4" class="conn-point" data-id="ns_in"/>
+                    <circle cx="85" cy="30" r="4" class="conn-point" data-id="ns_out"/>
+                </g>
+                <g id="solenoid" transform="translate(390, 250)">
+                    <rect width="130" height="70" class="component-body"/>
+                    <text x="65" y="16" text-anchor="middle" font-size="13">電磁開關</text>
+                    <path id="sol_hold" d="M12,30 Q17,22 22,30 T32,30 T42,30" class="relay-coil-path" fill="none"/>
+                    <path id="sol_pull" d="M12,50 Q17,42 22,50 T32,50 T42,50" class="relay-coil-path" fill="none"/>
+                    <line id="sol_blade" x1="55" y1="32" x2="108" y2="24" class="sol-blade"/>
+                    <circle cx="55" cy="32" r="2" fill="black"/>
+                    <line x1="108" y1="32" x2="125" y2="32" class="relay-switch-path"/>
+                    <circle cx="-5" cy="25" r="4" class="conn-point" data-id="sol_B"/>
+                    <circle cx="-5" cy="52" r="4" class="conn-point" data-id="sol_ST"/>
+                    <circle cx="135" cy="32" r="4" class="conn-point" data-id="sol_M"/>
+                    <circle cx="60" cy="70" r="4" class="conn-point" data-id="sol_G"/>
+                    <circle cx="110" cy="88" r="4" class="conn-point" data-id="sol_chassis"/>
+                    <line x1="110" y1="92" x2="110" y2="102" stroke="black" stroke-width="2"/><line x1="98" y1="102" x2="122" y2="102" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="103" y1="107" x2="117" y2="107" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="107" y1="112" x2="113" y2="112" stroke="black" stroke-width="2" stroke-linecap="round"/>
+                </g>
+                <g id="starterMotor" transform="translate(640, 320)">
+                    <rect width="90" height="80" class="component-body"/>
+                    <text x="45" y="24" text-anchor="middle" font-size="13">起動馬達</text>
+                    <circle cx="0" cy="45" r="4" class="conn-point" data-id="mot_M"/>
+                    <circle cx="45" cy="80" r="4" class="conn-point" data-id="mot_gnd"/>
+                    <rect id="pinionGear" x="-24" y="37" width="20" height="16" rx="2" fill="#7f8c8d" stroke="#000" stroke-width="1" visibility="hidden"/>
+                    <g id="motSpin" visibility="hidden"><path d="M-28,30 A12,12 0 0 1 -16,30" fill="none" stroke="#e67e22" stroke-width="3"/><path d="M-28,52 A12,12 0 0 0 -16,52" fill="none" stroke="#e67e22" stroke-width="3"/></g>
+                    <circle cx="45" cy="102" r="4" class="conn-point" data-id="mot_chassis"/>
+                    <line x1="45" y1="106" x2="45" y2="116" stroke="black" stroke-width="2"/><line x1="33" y1="116" x2="57" y2="116" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="38" y1="121" x2="52" y2="121" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="42" y1="126" x2="48" y2="126" stroke="black" stroke-width="2" stroke-linecap="round"/>
+                </g>
+            </svg>
+            <button id="clearBtn" class="clear-btn">清除連線</button>
+            <button id="deleteWireBtn" class="del-btn" onclick="toggleDeleteMode()">刪除單線</button>
+            <div class="controls-container">
+                <button id="faultBtn" class="action-btn btn-fault hidden">故障設定</button>
+                <button id="toExamBtn" class="action-btn btn-switch hidden" onclick="switchModeToExam()">切換至考評模式</button>
+                <button id="submitAnswerBtn" class="action-btn btn-submit hidden">繳交診斷報告</button>
+                <button id="repairBtn" class="action-btn btn-repair hidden">申請維修</button>
+                <button id="toPracticeBtn" class="action-btn btn-switch hidden" onclick="switchModeToPractice()">切換至練習模式</button>
+                <button id="setupGuideBtn" class="action-btn btn-guide hidden" onclick="openSetupGuide()">☁️ 雲端設定教學</button>
+                <button id="oemBtn" class="action-btn btn-oem hidden" onclick="OEM.toggle()">📖 線路圖</button>
+            </div>
+        </div>
+
+        <div class="meter-area">
+            <svg id="meterSvg" width="300" height="600" viewBox="0 0 300 600">
+                <defs>
+                    <g id="plug-red"><rect x="-6" y="-15" width="12" height="30" rx="3" fill="#e74c3c" stroke="#c0392b" stroke-width="1"/><circle cx="0" cy="18" r="3" fill="#bdc3c7"/></g>
+                    <g id="plug-black"><rect x="-6" y="-15" width="12" height="30" rx="3" fill="#2c3e50" stroke="#000" stroke-width="1"/><circle cx="0" cy="18" r="3" fill="#bdc3c7"/></g>
+                    <g id="probe-handle-red"><rect x="-5" y="-40" width="10" height="60" rx="2" fill="#e74c3c" stroke="#c0392b"/><rect x="-2" y="20" width="4" height="20" fill="#95a5a6"/></g>
+                    <g id="probe-handle-black"><rect x="-5" y="-40" width="10" height="60" rx="2" fill="#2c3e50" stroke="#000"/><rect x="-2" y="20" width="4" height="20" fill="#95a5a6"/></g>
+                </defs>
+                <g id="multimeter" transform="translate(25, 20)">
+                    <rect x="0" y="0" width="250" height="400" class="meter-body"/>
+                    <rect x="15" y="120" width="220" height="225" rx="10" class="meter-face-plate"/>
+                    <rect x="25" y="25" width="200" height="80" rx="5" class="meter-screen"/>
+                    <text id="meter-display" x="210" y="85" text-anchor="end" font-size="40" class="meter-text" fill="#2c3e50"></text>
+                    <g id="meter-scales" transform="translate(125, 240)"></g>
+                    <g id="meter-knob" transform="translate(125, 240)">
+                        <path d="M -12 -35 L 12 -35 L 15 35 L -15 35 Z" rx="10" class="meter-knob-body" /><circle cx="0" cy="0" r="18" class="meter-knob-body"/><circle cx="0" cy="-25" r="3" class="meter-knob-indicator"/><line x1="-5" y1="10" x2="5" y2="10" class="meter-knob-grip"/><line x1="-8" y1="15" x2="8" y2="15" class="meter-knob-grip"/><line x1="-10" y1="20" x2="10" y2="20" class="meter-knob-grip"/>
+                    </g>
+                    <g id="jack-com" transform="translate(60, 370)"><circle cx="0" cy="0" r="12" class="meter-jack"/><circle cx="0" cy="0" r="8" class="meter-jack-inner"/><text x="0" y="25" text-anchor="middle" font-size="12" font-weight="bold" fill="#ecf0f1">COM</text></g>
+                    <g id="jack-volts" transform="translate(125, 370)"><circle cx="0" cy="0" r="12" class="meter-jack"/><circle cx="0" cy="0" r="8" class="meter-jack-inner"/><text x="0" y="25" text-anchor="middle" font-size="12" font-weight="bold" fill="#d35400">V/Ω</text></g>
+                    <g id="jack-amps" transform="translate(190, 370)"><circle cx="0" cy="0" r="12" class="meter-jack"/><circle cx="0" cy="0" r="8" class="meter-jack-inner"/><text x="0" y="25" text-anchor="middle" font-size="12" font-weight="bold" fill="#ecf0f1">20A</text></g>
+                </g>
+                <path id="wire-red" d="M 0 0" stroke="#e74c3c" stroke-width="4" fill="none" />
+                <path id="wire-black" d="M 0 0" stroke="#2c3e50" stroke-width="4" fill="none" />
+                <g id="plug-red-obj" transform="translate(80, 470)" class="probe-plug"><use href="#plug-red"/></g>
+                <g id="plug-black-obj" transform="translate(50, 470)" class="probe-plug"><use href="#plug-black"/></g>
+                <g id="tip-red-obj" transform="translate(200, 470)" class="probe-tip"><use href="#probe-handle-red"/></g>
+                <g id="tip-black-obj" transform="translate(230, 470)" class="probe-tip"><use href="#probe-handle-black"/></g>
+            </svg>
+        </div>
+
+        <div id="oemFloat" class="hidden">
+            <div id="oemHead"><span>📖 原廠線路圖</span><span><button class="oem-tab active" data-tab="diagram" onclick="OEM.tab('diagram')">線路圖</button><button class="oem-tab" data-tab="values" onclick="OEM.tab('values')">正常值</button><button onclick="OEM.zoom(40)">＋</button><button onclick="OEM.zoom(-40)">－</button><button onclick="OEM.minimize()">_</button><button onclick="OEM.toggle(false)">×</button></span></div>
+            <div id="oemBody">
+                <div id="oemTabDiagram"><img src="./oem-diagram.svg?v=1" alt="起動系統原廠線路圖"></div>
+                <div id="oemTabValues" class="hidden">
+                    <table class="oem-values">
+                        <tr><th>量測點</th><th>正常值</th><th>檔位</th></tr>
+                        <tr><td>電瓶開路／起動電壓</td><td>12.6V／≧9.6V</td><td>DCV 20V</td></tr>
+                        <tr><td>保險絲前後端（對搭鐵）</td><td>12V</td><td>DCV 20V</td></tr>
+                        <tr><td>吸住線圈 ST-G</td><td>約30Ω（斷電量）</td><td>Ω 200</td></tr>
+                        <tr><td>吸入線圈 ST-M</td><td>約2Ω（斷電量）</td><td>Ω 200</td></tr>
+                        <tr><td>馬達本體 M-搭鐵</td><td>約1.5Ω（斷電量）</td><td>Ω 200</td></tr>
+                        <tr><td>B-M接點（吸合）</td><td>導通 0.1Ω／壓降≦2.5V</td><td>Ω 200／DCV 20V</td></tr>
+                        <tr><td>點火ST／空檔開關</td><td>導通 0.1Ω</td><td>Ω 200</td></tr>
+                        <tr><td>起動電流（搖轉）</td><td>100–300A</td><td>顯示值</td></tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div id="faultPanel">
+            <h3>🔩 故障設定 (練習模式)</h3>
+            <div class="fgroup"><h4>電源段</h4>
+            <label class="fpick"><input type="radio" name="faultpick" value="normal" checked onchange="setFault()">電路正常</label>
+            <label class="fpick"><input type="radio" name="faultpick" value="fuse_open" onchange="setFault()">保險絲斷路</label>
+            <label class="fpick"><input type="radio" name="faultpick" value="battB_open" onchange="setFault()">B主電源線斷（保險絲→電磁B）</label>
+            <label class="fpick"><input type="radio" name="faultpick" value="wireA_open" onchange="setFault()">線束A斷（電瓶→保險絲段配線）</label>
+            </div>
+            <div class="fgroup"><h4>控制段</h4>
+            <label class="fpick"><input type="radio" name="faultpick" value="ns_open" onchange="setFault()">空檔開關故障</label>
+            <label class="fpick"><input type="radio" name="faultpick" value="solHold_open" onchange="setFault()">吸住線圈斷路</label>
+            <label class="fpick"><input type="radio" name="faultpick" value="solPull_open" onchange="setFault()">吸入線圈斷路</label>
+            <label class="fpick"><input type="radio" name="faultpick" value="wireB_open" onchange="setFault()">線束B斷（點火ST→電磁ST配線）</label>
+            </div>
+            <div class="fgroup"><h4>負載段</h4>
+            <label class="fpick"><input type="radio" name="faultpick" value="bm_fail" onchange="setFault()">B-M接點燒蝕</label>
+            <label class="fpick"><input type="radio" name="faultpick" value="mot_open" onchange="setFault()">馬達本體斷路</label>
+            <label class="fpick"><input type="radio" name="faultpick" value="wireC_open" onchange="setFault()">線束C斷（馬達搭鐵配線）</label>
+            </div>
+            <button id="faultClearBtn" onclick="clearFault()">清除故障</button>
+        </div>
+    </div>
+
+    <div class="footer">
+        <div class="version">起動系統配線模擬器_V2</div>
+        <div>開發者：國立臺東專科學校汽車科 林慶泓 老師 & Gemini 共同創作</div>
+    </div>
+
+    <script src="../../shared/js/config.js"></script>
+    <script src="./exam_bank.js"></script>
+    <script src="../../shared/js/logger.js"></script>
+    <script src="../../shared/js/oem.js"></script>
+    <script src="../../shared/js/assessment.js"></script>
+    <script src="./app-start.js"></script>
+</body>
+</html>

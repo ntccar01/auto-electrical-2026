@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 565" font-family="Microsoft JhengHei, sans-serif">
+  <style>
+    .bus { stroke: #c0392b; stroke-width: 3; fill: none; }
+    .sym { fill: #fff; stroke: #000; stroke-width: 2; }
+    .int { fill: none; stroke: #000; stroke-width: 2; }
+    .lbl { font-size: 19px; fill: #000; }
+    .sml { font-size: 16px; fill: #000; }
+    .pin { font-size: 17px; font-weight: bold; fill: #7d3c98; }
+    .wirec { font-size: 16px; fill: #c0392b; font-weight: bold; }
+    .node { fill: #000; }
+    .title { font-size: 24px; font-weight: bold; fill: #1a5276; }
+    .sub { font-size: 16px; fill: #5d6d7e; }
+    .note { font-size: 17px; fill: #1a5276; }
+  </style>
+
+  <text x="20" y="34" class="title">起動系統線路圖（對照配線區佈局）</text>
+  <text x="560" y="34" class="sub">電源上・搭鐵下・R=紅</text>
+
+  <!-- 電瓶 -->
+  <g>
+    <rect x="50" y="290" width="60" height="100" class="sym"/>
+    <text x="80" y="345" text-anchor="middle" class="lbl">電瓶</text>
+    <circle cx="80" cy="290" r="4" class="node" data-node="bat_pos"/>
+    <circle cx="80" cy="390" r="4" class="node" data-node="bat_neg"/>
+    <line x1="80" y1="394" x2="80" y2="414" class="int"/>
+    <line x1="65" y1="414" x2="95" y2="414" class="int"/>
+    <line x1="70" y1="419" x2="90" y2="419" class="int"/>
+    <line x1="75" y1="424" x2="85" y2="424" class="int"/>
+  </g>
+
+  <!-- 保險絲 -->
+  <g>
+    <path d="M140,150 Q146,140 153,150 T166,150 T179,150 T190,150" fill="none" stroke="#000" stroke-width="2"/>
+    <text x="165" y="132" text-anchor="middle" class="sml">保險絲</text>
+    <circle cx="140" cy="150" r="4" class="node" data-node="fuse_in"/>
+    <circle cx="190" cy="150" r="4" class="node" data-node="fuse_out"/>
+  </g>
+
+  <!-- 點火開關 -->
+  <g>
+    <rect x="400" y="70" width="110" height="80" class="sym"/>
+    <circle cx="455" cy="106" r="20" fill="#fff" stroke="#000" stroke-width="2"/>
+    <text x="455" y="112" text-anchor="middle" font-size="15" font-weight="bold">ST</text>
+    <circle cx="395" cy="125" r="4" class="node" data-node="ig_B"/>
+    <circle cx="515" cy="125" r="4" class="node" data-node="ig_IG"/>
+    <circle cx="515" cy="82" r="4" class="node" data-node="ig_ST"/>
+    <text x="376" y="129" class="pin">B</text>
+    <text x="521" y="129" class="pin">IG</text>
+    <text x="521" y="86" class="pin">ST</text>
+    <text x="455" y="62" text-anchor="middle" class="sml">點火開關</text>
+  </g>
+
+  <!-- 空檔開關 -->
+  <g>
+    <rect x="650" y="80" width="80" height="60" class="sym"/>
+    <text x="690" y="108" text-anchor="middle" font-size="16" font-weight="bold">P</text>
+    <text x="690" y="132" text-anchor="middle" class="sml">空檔開關</text>
+    <circle cx="645" cy="110" r="4" class="node" data-node="ns_in"/>
+    <circle cx="735" cy="110" r="4" class="node" data-node="ns_out"/>
+  </g>
+
+  <!-- 電磁開關 -->
+  <g>
+    <rect x="390" y="250" width="130" height="70" class="sym"/>
+    <text x="455" y="240" text-anchor="middle" class="sml">電磁開關</text>
+    <path d="M402,282 Q407,274 412,282 T422,282 T432,282" fill="none" stroke="#000" stroke-width="2"/>
+    <text x="400" y="300" class="sml">吸住/吸入線圈</text>
+    <line x1="445" y1="282" x2="500" y2="274" stroke="#000" stroke-width="2"/>
+    <circle cx="445" cy="282" r="3" fill="#000"/>
+    <circle cx="385" cy="275" r="4" class="node" data-node="sol_B"/>
+    <circle cx="385" cy="302" r="4" class="node" data-node="sol_ST"/>
+    <circle cx="525" cy="282" r="4" class="node" data-node="sol_M"/>
+    <circle cx="450" cy="320" r="4" class="node" data-node="sol_G"/>
+    <text x="366" y="279" class="pin">B</text>
+    <text x="360" y="306" class="pin">ST</text>
+    <text x="531" y="286" class="pin">M</text>
+    <circle cx="500" cy="338" r="4" class="node" data-node="sol_chassis"/>
+    <line x1="500" y1="342" x2="500" y2="352" class="int"/>
+    <line x1="488" y1="352" x2="512" y2="352" class="int"/>
+    <line x1="493" y1="357" x2="507" y2="357" class="int"/>
+    <line x1="497" y1="362" x2="503" y2="362" class="int"/>
+  </g>
+
+  <!-- 起動馬達 -->
+  <g>
+    <rect x="640" y="320" width="90" height="80" class="sym"/>
+    <text x="685" y="312" text-anchor="middle" class="sml">起動馬達</text>
+    <circle cx="640" cy="365" r="4" class="node" data-node="mot_M"/>
+    <circle cx="685" cy="400" r="4" class="node" data-node="mot_gnd"/>
+    <circle cx="685" cy="422" r="4" class="node" data-node="mot_chassis"/>
+    <line x1="685" y1="426" x2="685" y2="436" class="int"/>
+    <line x1="673" y1="436" x2="697" y2="436" class="int"/>
+    <line x1="678" y1="441" x2="692" y2="441" class="int"/>
+    <line x1="682" y1="446" x2="688" y2="446" class="int"/>
+    <text x="646" y="352" class="pin">M</text>
+  </g>
+
+  <!-- 參考配線（紅） -->
+  <g>
+    <line x1="80" y1="290" x2="80" y2="150" class="bus"/>
+    <line x1="80" y1="150" x2="140" y2="150" class="bus"/>
+    <text x="88" y="220" class="wirec">R</text>
+    <line x1="190" y1="150" x2="395" y2="150" class="bus"/>
+    <line x1="395" y1="150" x2="395" y2="125" class="bus"/>
+    <circle cx="395" cy="150" r="4" class="node"/>
+    <line x1="360" y1="150" x2="360" y2="275" class="bus"/>
+    <line x1="360" y1="275" x2="385" y2="275" class="bus"/>
+    <circle cx="360" cy="150" r="4" class="node"/>
+    <line x1="515" y1="82" x2="560" y2="82" class="bus"/>
+    <line x1="560" y1="82" x2="560" y2="110" class="bus"/>
+    <line x1="560" y1="110" x2="645" y2="110" class="bus"/>
+    <line x1="735" y1="110" x2="760" y2="110" class="bus"/>
+    <line x1="760" y1="110" x2="760" y2="302" class="bus"/>
+    <line x1="760" y1="302" x2="385" y2="302" class="bus"/>
+    <text x="600" y="102" class="wirec">R</text>
+    <line x1="525" y1="282" x2="580" y2="282" class="bus"/>
+    <line x1="580" y1="282" x2="580" y2="365" class="bus"/>
+    <line x1="580" y1="365" x2="640" y2="365" class="bus"/>
+    <text x="588" y="320" class="wirec">R</text>
+    <line x1="685" y1="400" x2="685" y2="422" class="bus"/>
+    <line x1="450" y1="320" x2="450" y2="360" class="bus"/>
+    <line x1="450" y1="360" x2="500" y2="360" class="bus"/>
+    <line x1="500" y1="360" x2="500" y2="338" class="bus"/>
+  </g>
+
+  <!-- 迴路說明 -->
+  <text x="20" y="500" class="note">主迴路：電瓶B+ → 保險絲 → 電磁B →(B-M吸合)→ M → 馬達 → 搭鐵（約180A搖轉）</text>
+  <text x="20" y="524" class="note">控制迴路：保險絲後 → 點火B → ST → 空檔開關 → 電磁ST → 吸住/吸入線圈 → 搭鐵</text>
+  <text x="20" y="548" class="note">三態：靜止 → ST吸合中（噠＋小齒輪伸出） → B-M接合搖轉（小齒輪旋轉）</text>
+</svg>

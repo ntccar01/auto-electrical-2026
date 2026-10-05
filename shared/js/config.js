@@ -10,7 +10,7 @@ window.NTC_CONFIG = {
   // 單元註冊表：採計勾選與學習地圖由此驅動
   units: [
     { id: 'horn', name: '喇叭系統', enabled: true },
-    { id: 'start', name: '起動系統', enabled: false }
+    { id: 'start', name: '起動系統', enabled: true }
   ],
   // 評分預設權重（查修 / 綜合，P2 評分引擎使用）
   scoring: {

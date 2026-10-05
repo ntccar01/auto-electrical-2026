@@ -93,6 +93,15 @@
         #circuitSvg.delete-mode .conn-point { cursor: not-allowed; }
         /* P1 觸控：SVG 內拖曳不觸發捲動/縮放手勢 */
         #circuitSvg, #meterSvg { touch-action: none; }
+        /* 起動單元：控制列＋電磁開關刀片＋小齒輪 */
+        .control-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; background: #ecf0f1; border-radius: 8px; padding: 8px 14px; margin-bottom: 10px; font-size: 14px; color: #2c3e50; }
+        .ctl-btn { padding: 6px 12px; border: 1px solid #7f8c8d; border-radius: 5px; background: #fff; cursor: pointer; font-family: "Microsoft JhengHei"; font-size: 14px; }
+        .ctl-btn:hover { background: #d5dbdb; }
+        .ctl-btn.active { background: #1a5276; color: #fff; border-color: #1a5276; font-weight: bold; }
+        #igStBtn.active { background: #c0392b; border-color: #c0392b; }
+        .sol-blade { stroke: #000; stroke-width: 2; transition: all 0.15s; transform-origin: 55px 32px; }
+        .sol-on .sol-blade { transform: rotate(10deg); stroke: #28a745; }
+        .sol-blade.flowing { stroke: #ff5722; stroke-width: 3; }
         /* P1 OEM 浮動線路圖 */
         .btn-oem { background-color: #1a5276; } .btn-oem:hover { background-color: #154360; }
         .btn-repair { background-color: #d35400; } .btn-repair:hover { background-color: #a04000; }

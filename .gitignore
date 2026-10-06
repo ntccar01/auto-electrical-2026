@@ -1,0 +1,31 @@
+# Google Drive 系統檔
+desktop.ini
+*.tmp
+~$*
+
+# ===== 課本掃描檔（版權＋體積，已追蹤的舊檔需手動 git rm --cached）=====
+電子書/*.pdf
+
+# ===== 敏感資料（絕不能 commit）=====
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.p12
+credentials.*
+credential.*
+service-account*
+*.token
+*.oauth
+
+# Claude/OpenCode 本地設定
+.claude/
+
+# IDE 設定
+.vscode/
+.idea/
+
+# Node.js
+node_modules/
+package-lock.json

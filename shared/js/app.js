@@ -279,6 +279,7 @@
         }
 
         document.getElementById('faultBtn').addEventListener('click', () => { document.getElementById('faultPanel').classList.toggle('visible'); });
+        (function(){ const fp = document.getElementById('faultPanel'); const h = fp ? fp.querySelector('h3') : null; if (h && !h.querySelector('.fp-close')) { const b = document.createElement('button'); b.className = 'fp-close'; b.textContent = '✕'; b.title = '關閉'; b.setAttribute('aria-label', '關閉故障設定'); b.onclick = () => fp.classList.remove('visible'); h.appendChild(b); } })();
         document.getElementById('submitAnswerBtn').addEventListener('click', () => { openQuizModal(); });
         document.getElementById('cancelSubmitBtn').addEventListener('click', () => { document.getElementById('quizModal').classList.add('hidden'); });
         document.getElementById('repairBtn').addEventListener('click', () => { openRepairModal(); });

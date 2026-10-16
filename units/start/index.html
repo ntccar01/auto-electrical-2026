@@ -120,7 +120,7 @@
                 </defs>
                 <g id="battery" transform="translate(50, 290)"><rect width="60" height="100" class="component-body"/><text x="30" y="50" class="text-label" dominant-baseline="middle" text-anchor="middle" dy="1">電瓶</text><circle cx="30" cy="0" r="4" class="conn-point" data-id="bat_pos"/><circle cx="30" cy="100" r="4" class="conn-point" data-id="bat_neg"/><use href="#std-ground" x="30" y="105"/></g>
                 
-                <g id="fuse" transform="translate(140, 140)"><path id="path_fuse" d="M0,10 Q6.25,0 12.5,10 T25,10 T37.5,10 T50,10" class="component-internal"/><circle cx="0" cy="10" r="4" class="conn-point" data-id="fuse_in"/><circle cx="50" cy="10" r="4" class="conn-point" data-id="fuse_out"/><text x="25" y="-8" text-anchor="middle" font-size="12">保險絲</text></g>
+                <g id="fuse" transform="translate(80, 115)"><path id="path_fuse" d="M0,10 Q6.25,0 12.5,10 T25,10 T37.5,10 T50,10" class="component-internal"/><circle cx="0" cy="10" r="4" class="conn-point" data-id="fuse_in"/><circle cx="50" cy="10" r="4" class="conn-point" data-id="fuse_out"/><text x="25" y="-8" text-anchor="middle" font-size="12">保險絲</text></g>
                 
                 <g id="ignition" transform="translate(400, 70)">
                     <rect width="110" height="80" class="component-body"/>
@@ -128,40 +128,68 @@
                     <text x="55" y="42" text-anchor="middle" font-size="15" font-weight="bold" id="igPosText">OFF</text>
                     <text x="55" y="72" text-anchor="middle" font-size="12">點火開關</text>
                     <circle cx="-5" cy="55" r="4" class="conn-point" data-id="ig_B"/>
+                    <text x="-11" y="47" text-anchor="end" font-size="12" font-weight="bold">B</text>
                     <circle cx="115" cy="55" r="4" class="conn-point" data-id="ig_IG"/>
+                    <text x="121" y="69" font-size="12" font-weight="bold">IG</text>
                     <circle cx="115" cy="12" r="4" class="conn-point" data-id="ig_ST"/>
+                    <text x="121" y="8" font-size="12" font-weight="bold">ST</text>
                 </g>
-                <g id="neutral" transform="translate(650, 80)">
+                <g id="neutral" transform="translate(650, 52)">
                     <rect width="80" height="60" class="component-body"/>
                     <text x="40" y="28" text-anchor="middle" font-size="16" font-weight="bold" id="nsPosText">P</text>
                     <text x="40" y="50" text-anchor="middle" font-size="11">空檔開關</text>
                     <circle cx="-5" cy="30" r="4" class="conn-point" data-id="ns_in"/>
                     <circle cx="85" cy="30" r="4" class="conn-point" data-id="ns_out"/>
                 </g>
-                <g id="solenoid" transform="translate(390, 250)">
-                    <rect width="130" height="70" class="component-body"/>
-                    <text x="65" y="16" text-anchor="middle" font-size="13">電磁開關</text>
-                    <path id="sol_hold" d="M12,30 Q17,22 22,30 T32,30 T42,30" class="relay-coil-path" fill="none"/>
-                    <path id="sol_pull" d="M12,50 Q17,42 22,50 T32,50 T42,50" class="relay-coil-path" fill="none"/>
-                    <line id="sol_blade" x1="55" y1="32" x2="108" y2="24" class="sol-blade"/>
-                    <circle cx="55" cy="32" r="2" fill="black"/>
-                    <line x1="108" y1="32" x2="125" y2="32" class="relay-switch-path"/>
-                    <circle cx="-5" cy="25" r="4" class="conn-point" data-id="sol_B"/>
-                    <circle cx="-5" cy="52" r="4" class="conn-point" data-id="sol_ST"/>
-                    <circle cx="135" cy="32" r="4" class="conn-point" data-id="sol_M"/>
-                    <circle cx="60" cy="70" r="4" class="conn-point" data-id="sol_G"/>
-                    <circle cx="110" cy="88" r="4" class="conn-point" data-id="sol_chassis"/>
-                    <line x1="110" y1="92" x2="110" y2="102" stroke="black" stroke-width="2"/><line x1="98" y1="102" x2="122" y2="102" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="103" y1="107" x2="117" y2="107" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="107" y1="112" x2="113" y2="112" stroke="black" stroke-width="2" stroke-linecap="round"/>
+                <g id="solenoid" transform="translate(380, 240)">
+                    <rect width="170" height="135" class="sol-box" fill="#d9ead3" stroke="#000" stroke-width="2"/>
+                    <text x="85" y="17" text-anchor="middle" font-size="14" font-weight="bold">電磁開關</text>
+                    <circle cx="-5" cy="44" r="4" class="conn-point" data-id="sol_ST"/>
+                    <text x="-16" y="36" text-anchor="end" font-size="12" font-weight="bold">ST</text>
+                    <line x1="0" y1="44" x2="24" y2="44" stroke="black" stroke-width="2"/>
+                    <line x1="12" y1="44" x2="12" y2="73" stroke="black" stroke-width="2"/>
+                    <text x="62" y="33" text-anchor="middle" font-size="11">吸住線圈</text>
+                    <path id="sol_hold" d="M24,44 Q28,36 32,44 T40,44 T48,44 T56,44 T64,44 T72,44 T80,44 T88,44 T96,44" class="relay-coil-path" fill="none"/>
+                    <line x1="96" y1="44" x2="155" y2="44" stroke="black" stroke-width="2"/>
+                    <line x1="155" y1="44" x2="155" y2="135" stroke="black" stroke-width="2"/>
+                    <circle cx="155" cy="135" r="4" class="conn-point" data-id="sol_G"/>
+                    <text x="146" y="148" text-anchor="end" font-size="12" font-weight="bold">G</text>
+                    <text x="54" y="61" text-anchor="middle" font-size="11">吸入線圈</text>
+                    <line x1="12" y1="73" x2="24" y2="73" stroke="black" stroke-width="2"/>
+                    <path id="sol_pull" d="M24,73 Q28,65 32,73 T40,73 T48,73 T56,73 T64,73 T72,73 T80,73 T84,73" class="relay-coil-path" fill="none"/>
+                    <line x1="84" y1="73" x2="140" y2="73" stroke="black" stroke-width="2"/>
+                    <line x1="140" y1="73" x2="140" y2="108" stroke="black" stroke-width="2"/>
+                    <circle cx="140" cy="108" r="2.5" fill="black"/>
+                    <circle cx="-5" cy="108" r="4" class="conn-point" data-id="sol_B"/>
+                    <text x="-11" y="120" text-anchor="end" font-size="12" font-weight="bold">B</text>
+                    <line x1="0" y1="108" x2="50" y2="108" stroke="black" stroke-width="2"/>
+                    <line id="sol_blade" x1="50" y1="108" x2="104" y2="83" class="sol-blade"/>
+                    <circle cx="50" cy="108" r="2.5" fill="black"/>
+                    <circle cx="110" cy="108" r="3" fill="black"/>
+                    <line x1="110" y1="108" x2="170" y2="108" stroke="black" stroke-width="2"/>
+                    <circle cx="175" cy="108" r="4" class="conn-point" data-id="sol_M"/>
+                    <text x="181" y="100" font-size="12" font-weight="bold">M</text>
+                    <circle cx="155" cy="178" r="4" class="conn-point" data-id="sol_chassis"/>
+                    <line x1="155" y1="182" x2="155" y2="188" stroke="black" stroke-width="2"/><line x1="143" y1="188" x2="167" y2="188" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="148" y1="193" x2="162" y2="193" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="152" y1="198" x2="158" y2="198" stroke="black" stroke-width="2" stroke-linecap="round"/>
                 </g>
-                <g id="starterMotor" transform="translate(640, 320)">
-                    <rect width="90" height="80" class="component-body"/>
-                    <text x="45" y="24" text-anchor="middle" font-size="13">起動馬達</text>
-                    <circle cx="0" cy="45" r="4" class="conn-point" data-id="mot_M"/>
-                    <circle cx="45" cy="80" r="4" class="conn-point" data-id="mot_gnd"/>
-                    <rect id="pinionGear" x="-24" y="37" width="20" height="16" rx="2" fill="#7f8c8d" stroke="#000" stroke-width="1" visibility="hidden"/>
-                    <g id="motSpin" visibility="hidden"><path d="M-28,30 A12,12 0 0 1 -16,30" fill="none" stroke="#e67e22" stroke-width="3"/><path d="M-28,52 A12,12 0 0 0 -16,52" fill="none" stroke="#e67e22" stroke-width="3"/></g>
-                    <circle cx="45" cy="102" r="4" class="conn-point" data-id="mot_chassis"/>
-                    <line x1="45" y1="106" x2="45" y2="116" stroke="black" stroke-width="2"/><line x1="33" y1="116" x2="57" y2="116" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="38" y1="121" x2="52" y2="121" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="42" y1="126" x2="48" y2="126" stroke="black" stroke-width="2" stroke-linecap="round"/>
+                <g id="starterMotor" transform="translate(640, 288)">
+                    <rect width="110" height="125" class="mot-box" fill="#cfe2f3" stroke="#000" stroke-width="2"/>
+                    <text x="55" y="17" text-anchor="middle" font-size="13" font-weight="bold">馬達本體</text>
+                    <circle cx="-5" cy="60" r="4" class="conn-point" data-id="mot_M"/>
+                    <text x="-11" y="72" text-anchor="end" font-size="12" font-weight="bold">M</text>
+                    <line x1="0" y1="60" x2="16" y2="60" stroke="black" stroke-width="2"/>
+                    <text x="32" y="50" text-anchor="middle" font-size="10">磁場線圈</text>
+                    <path d="M16,60 Q20,52 24,60 T32,60 T40,60 T48,60" fill="none" stroke="black" stroke-width="2"/>
+                    <line x1="48" y1="60" x2="62" y2="66" stroke="black" stroke-width="2"/>
+                    <circle cx="74" cy="70" r="12" fill="#fff" stroke="#000" stroke-width="2"/>
+                    <text x="74" y="74" text-anchor="middle" font-size="12" font-weight="bold">M</text>
+                    <text x="68" y="96" text-anchor="end" font-size="10">電樞線圈</text>
+                    <line x1="74" y1="82" x2="74" y2="125" stroke="black" stroke-width="2"/>
+                    <circle cx="74" cy="125" r="4" class="conn-point" data-id="mot_gnd"/>
+                    <rect id="pinionGear" x="31" y="-34" width="28" height="12" rx="2" fill="#7f8c8d" stroke="#000" stroke-width="1" visibility="hidden" class="mot-vibe"/>
+                    <g id="motSpin" visibility="hidden" class="mot-vibe"><path d="M23,-40 A12,12 0 0 0 23,-16" fill="none" stroke="#e67e22" stroke-width="3"/><path d="M67,-40 A12,12 0 0 1 67,-16" fill="none" stroke="#e67e22" stroke-width="3"/></g>
+                    <circle cx="74" cy="156" r="4" class="conn-point" data-id="mot_chassis"/>
+                    <line x1="74" y1="160" x2="74" y2="166" stroke="black" stroke-width="2"/><line x1="62" y1="166" x2="86" y2="166" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="67" y1="171" x2="81" y2="171" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="71" y1="176" x2="77" y2="176" stroke="black" stroke-width="2" stroke-linecap="round"/>
                 </g>
             </svg>
             <button id="clearBtn" class="clear-btn">清除連線</button>
@@ -210,7 +238,7 @@
         <div id="oemFloat" class="hidden">
             <div id="oemHead"><span>📖 原廠線路圖</span><span><button class="oem-tab active" data-tab="diagram" onclick="OEM.tab('diagram')">線路圖</button><button class="oem-tab" data-tab="values" onclick="OEM.tab('values')">正常值</button><button onclick="OEM.zoom(40)">＋</button><button onclick="OEM.zoom(-40)">－</button><button onclick="OEM.minimize()">_</button><button onclick="OEM.toggle(false)">×</button></span></div>
             <div id="oemBody">
-                <div id="oemTabDiagram"><img src="./oem-diagram.svg?v=1" alt="起動系統原廠線路圖"></div>
+                <div id="oemTabDiagram"><img src="./oem-diagram.svg?v=3" alt="起動系統原廠線路圖"></div>
                 <div id="oemTabValues" class="hidden">
                     <table class="oem-values">
                         <tr><th>量測點</th><th>正常值</th><th>檔位</th></tr>

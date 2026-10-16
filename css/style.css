@@ -99,9 +99,16 @@
         .ctl-btn:hover { background: #d5dbdb; }
         .ctl-btn.active { background: #1a5276; color: #fff; border-color: #1a5276; font-weight: bold; }
         #igStBtn.active { background: #c0392b; border-color: #c0392b; }
-        .sol-blade { stroke: #000; stroke-width: 2; transition: all 0.15s; transform-origin: 55px 32px; }
-        .sol-on .sol-blade { transform: rotate(10deg); stroke: #28a745; }
+        .sol-box { fill: #d9ead3; stroke: #000; stroke-width: 2; }
+        .mot-box { fill: #cfe2f3; stroke: #000; stroke-width: 2; }
+        .sol-blade { stroke: #000; stroke-width: 2; transition: all 0.15s; transform-box: fill-box; transform-origin: 0% 100%; }
+        .sol-on .sol-blade { transform: rotate(25deg); stroke: #28a745; }
         .sol-blade.flowing { stroke: #ff5722; stroke-width: 3; }
+        /* 馬達運轉振動 */
+        @keyframes motVibe { 0%,100% { transform: translate(0,0); } 25% { transform: translate(1.5px,-1px); } 50% { transform: translate(-1.5px,1px); } 75% { transform: translate(1px,1.5px); } }
+        .mot-vibe { animation: motVibe 0.16s linear infinite; transform-box: fill-box; transform-origin: center; }
+        /* 故障面板關閉鈕 */
+        .fp-close { float: right; background: none; border: none; color: #fff; font-size: 16px; cursor: pointer; line-height: 1; }
         /* P1 OEM 浮動線路圖 */
         .btn-oem { background-color: #1a5276; } .btn-oem:hover { background-color: #154360; }
         .btn-repair { background-color: #d35400; } .btn-repair:hover { background-color: #a04000; }
@@ -118,8 +125,8 @@
         table.oem-values th { background: #1a5276; color: #fff; }
         
         /* 故障面板 (左側) */
-        #faultPanel { position: absolute; top: 20px; left: -250px; width: 230px; background: #2c3e50; color: white; padding: 15px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4); transition: left 0.3s; z-index: 200; max-height: 80vh; overflow-y: auto; }
-        #faultPanel.visible { left: 20px; }
+        #faultPanel { position: absolute; top: 20px; left: -250px; width: 230px; background: #2c3e50; color: white; padding: 15px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4); transition: left 0.3s; z-index: 200; max-height: 80vh; overflow-y: auto; display: none; }
+        #faultPanel.visible { left: 20px; display: block; }
         #faultPanel h3 { margin-top: 0; font-size: 16px; color: #f1c40f; }
         #faultPanel label { display: block; margin-top: 10px; font-size: 14px; }
         #faultPanel select { width: 100%; padding: 5px; margin-top: 3px; border-radius: 4px; }

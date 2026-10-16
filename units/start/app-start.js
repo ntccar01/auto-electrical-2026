@@ -282,6 +282,7 @@
         }
 
         document.getElementById('faultBtn').addEventListener('click', () => { document.getElementById('faultPanel').classList.toggle('visible'); });
+        (function(){ const fp = document.getElementById('faultPanel'); const h = fp ? fp.querySelector('h3') : null; if (h && !h.querySelector('.fp-close')) { const b = document.createElement('button'); b.className = 'fp-close'; b.textContent = '✕'; b.title = '關閉'; b.setAttribute('aria-label', '關閉故障設定'); b.onclick = () => fp.classList.remove('visible'); h.appendChild(b); } })();
         document.getElementById('submitAnswerBtn').addEventListener('click', () => { openQuizModal(); });
         document.getElementById('cancelSubmitBtn').addEventListener('click', () => { document.getElementById('quizModal').classList.add('hidden'); });
         document.getElementById('repairBtn').addEventListener('click', () => { openRepairModal(); });
@@ -458,6 +459,8 @@
                 if ((gearPos === 'P' || gearPos === 'N') && faultState.ns === 'Normal') addEdge('ns_in', 'ns_out');
                 // B-M 接點（燒蝕=不導通）
                 if (bmClosed && faultState.bm === 'Normal') addEdge('sol_B', 'sol_M');
+                // 馬達內部線圈（本體正常時 M-搭鐵內部相通，供吸入線圈搭鐵迴路判斷）
+                if (faultState.mot === 'Normal') addEdge('mot_M', 'mot_gnd');
                 for (let gi = 1; gi < GROUND_NET.length; gi++) addEdge(GROUND_NET[0], GROUND_NET[gi]);
                 return adj;
             },
@@ -539,8 +542,12 @@
             const stNow = (igPos === 'ST');
             const vST = CircuitEngine.getVoltageAtNode('sol_ST', stNow, false);
             const holdOK = faultState.solHold === 'Normal', pullOK = faultState.solPull === 'Normal';
-            // B-M 機械吸合：ST 有電＋雙線圈正常（圖4-12→4-13）
-            const bmMech = (vST > 10) && holdOK && pullOK;
+            // 線圈搭鐵迴路：吸住經 sol_G→搭鐵，吸入經 M→馬達→搭鐵（無搭鐵不吸合）
+            const gPre = CircuitEngine.buildGraph(stNow, false);
+            const holdGnd = CircuitEngine.isConnected('sol_G', 'bat_neg', gPre);
+            const pullGnd = CircuitEngine.isConnected('sol_M', 'bat_neg', gPre);
+            // B-M 機械吸合：ST 有電＋雙線圈正常＋雙線圈皆有搭鐵（圖4-12→4-13）
+            const bmMech = (vST > 10) && holdOK && pullOK && holdGnd && pullGnd;
             window.__bmMech = bmMech;
 
             const solG = document.getElementById('solenoid');
@@ -552,7 +559,7 @@
                 const gFull = CircuitEngine.buildGraph(stNow, true);
                 const mGnd = CircuitEngine.isConnected('mot_gnd', 'bat_neg', gFull);
                 if (vMot > 10 && faultState.mot === 'Normal' && mGnd) { crank = true; amps = 180; }
-            } else if (vST > 10 && !bmMech) { amps = 8; } // 吸入電流經馬達（B-M未閉合）
+            } else if (vST > 10 && !bmMech && (holdGnd || pullGnd)) { amps = 8; } // 線圈有搭鐵才有吸入電流
 
             const pinion = document.getElementById('pinionGear');
             if (pinion) pinion.setAttribute('visibility', bmMech ? 'visible' : 'hidden');
@@ -563,6 +570,7 @@
 
             if (crank) { statusMsg.innerText = "搖轉起動中（約180A）"; statusMsg.style.color = "#2ecc71"; }
             else if (bmMech) { statusMsg.innerText = "電磁開關吸合（噠），馬達未搖轉"; statusMsg.style.color = "#f39c12"; }
+            else if (vST > 10) { statusMsg.innerText = "ST已送電但未吸合（檢查線圈搭鐵迴路）"; statusMsg.style.color = "#f39c12"; }
             else if (!isAssessmentMode) {
                 const dorm = dormantSegs();
                 if (dorm.length) { statusMsg.innerText = "已設定" + dorm.map(k => WIRE_SEGS[k].label).join('、') + "斷路，但該段尚未配線（先完成配線才會發作）"; statusMsg.style.color = "#f39c12"; }
@@ -609,6 +617,7 @@
             if (bmClosed && faultState.bm === 'Normal') link('sol_B', 'sol_M');
             if (faultState.solHold === 'Normal') link('sol_ST', 'sol_G');
             if (faultState.solPull === 'Normal') link('sol_ST', 'sol_M');
+            if (faultState.mot === 'Normal') link('mot_M', 'mot_gnd');
             for (let gi = 1; gi < GROUND_NET.length; gi++) link(GROUND_NET[0], GROUND_NET[gi]);
             const isPowered = (node) => { let q=[node], v=new Set([node]); while(q.length) { let n=q.shift(); if(n==='bat_pos') return true; if(graph[n]) for(let nb of graph[n]) if(!v.has(nb)){v.add(nb);q.push(nb);} } return false; };
             const isGrounded = (node) => { let q=[node], v=new Set([node]); while(q.length) { let n=q.shift(); if(n==='bat_neg') return true; if(graph[n]) for(let nb of graph[n]) if(!v.has(nb)){v.add(nb);q.push(nb);} } return false; };
@@ -623,8 +632,8 @@
             });
             if (faultState.fuse === 'Normal') { if(isPowered('fuse_in') && isGrounded('fuse_out')) { const f = document.getElementById('path_fuse'); if (f) f.classList.add('flowing'); } }
             if (isPowered('sol_ST')) {
-                if (faultState.solHold === 'Normal') { const h = document.getElementById('sol_hold'); if (h) h.classList.add('flowing'); }
-                if (faultState.solPull === 'Normal') { const p = document.getElementById('sol_pull'); if (p) p.classList.add('flowing'); }
+                if (faultState.solHold === 'Normal' && isGrounded('sol_G')) { const h = document.getElementById('sol_hold'); if (h) h.classList.add('flowing'); }
+                if (faultState.solPull === 'Normal' && isGrounded('sol_M')) { const p = document.getElementById('sol_pull'); if (p) p.classList.add('flowing'); }
             }
             if (bmClosed && isPowered('sol_B')) {
                  const bl = document.getElementById('sol_blade'); if (bl) bl.classList.add('flowing');

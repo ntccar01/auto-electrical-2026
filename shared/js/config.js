@@ -4,7 +4,7 @@
  */
 window.NTC_CONFIG = {
   version: '2.0-P0',
-  // 教師 GAS Web App URL（未設定時上傳按鈕會提示）
+  // 教師專用 GAS Web App URL（以教師帳號登入，匯入學生提交檔）
   gasUrl: '',
   semester: '',
   // 單元註冊表：採計勾選與學習地圖由此驅動

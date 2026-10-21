@@ -27,13 +27,17 @@
                 return null;
             }
             function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+            function mask(s) {
+                s = String(s == null ? '' : s);
+                return s.length > 1 ? s.slice(0, 1) + '＊＊' : '＊';
+            }
             function check() {
                 var id = (document.getElementById('vid').value || '').trim();
                 var box = document.getElementById('vmsg');
                 if (!id) { box.textContent = '請輸入證書ID'; return; }
                 var c = find(id);
                 if (!c) { box.innerHTML = '❌ 查無此證書（本機無核發紀錄）'; return; }
-                box.innerHTML = '✅ 驗證通過<br>證書ID：' + esc(c.certId) + '<br>學生：' + esc(c.cls) + ' ' + esc(c.name) + '（' + esc(c.seat) + '）<br>' +
+                box.innerHTML = '找到本機核發紀錄（尚未經雲端查驗）<br>證書ID：' + esc(mask(c.certId)) + '<br>學生：' + esc(mask(c.cls)) + '（座號 ' + esc(mask(c.seat)) + '）<br>' +
                     '單元：' + esc((c.units || []).join('、')) + '　最佳總分：' + esc(c.best) + '<br>核發：' + esc(c.teacher) + '（' + esc(c.at) + '）<br>驗證碼：' + esc(String(c.hash).slice(0, 12));
             }
             var q = null;

@@ -1,12 +1,7 @@
 /* V2-P0: extracted V52 logic + 2 patches (GAS config, hash assignment) */
 
-        // 設定區：請填入您的 Google Apps Script 網址
-        const TEACHER_GOOGLE_SCRIPT_URL = (window.NTC_CONFIG && window.NTC_CONFIG.gasUrl) || '';
-
         function openSetupGuide() {
-            const w = window.open('', '_blank', 'width=800,height=600');
-            const html = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>Google 試算表上傳設定教學</title><style>body { font-family: "Microsoft JhengHei", sans-serif; padding: 20px; line-height: 1.6; color: #333; } h2 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; } ol { padding-left: 20px; } li { margin-bottom: 10px; } code { background: #f1f1f1; padding: 2px 5px; border-radius: 3px; font-family: monospace; color: #e74c3c; } pre { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 5px; overflow-x: auto; font-family: monospace; } .highlight { color: #f1c40f; font-weight: bold; }</style></head><body><h2>☁️ 如何設定成績上傳至 Google 試算表</h2><p>請依照以下步驟建立後端接收程式，完成後即可讓學生上傳考評結果。</p><ol><li>在 Google Drive 建立一個新的 <strong>Google 試算表</strong>。</li><li>在第一列建立標題：<code>時間</code>, <code>班級</code>, <code>姓名</code>, <code>座號</code>, <code>診斷結果</code>, <code>正確答案</code>, <code>是否通過</code>。</li><li>點擊上方選單 <strong>擴充功能 (Extensions)</strong> &gt; <strong>Apps Script</strong>。</li><li>將編輯器內的程式碼全部刪除，貼上以下代碼：</li></ol><pre>function doPost(e) { var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet(); var data = JSON.parse(e.postData.contents); var timestamp = new Date(); sheet.appendRow([ timestamp, data.studentClass, data.studentName, data.seatNumber, data.userDiagnosis, data.correctFault, data.isPass ? "通過" : "未通過" ]); return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);}</pre><ol start="5"><li>點擊右上角 <strong>部署 (Deploy)</strong> &gt; <strong>新增部署 (New deployment)</strong>。</li><li>點擊齒輪圖示 &gt; 選擇 <strong>網頁應用程式 (Web app)</strong>。</li><li><strong>⚠️ 關鍵設定：</strong><ul><li>執行身分 (Execute as)：<strong>我 (Me)</strong></li><li>誰可以存取 (Who has access)：<span class="highlight">任何人 (Anyone)</span> &lt;-- 務必選這個！</li></ul></li><li>點擊 <strong>部署</strong>，複製產生的 <strong>網頁應用程式網址 (Web App URL)</strong>。</li><li>回到本模擬器的程式碼中，找到最下方的 <code>const TEACHER_GOOGLE_SCRIPT_URL = '';</code>，將網址貼入單引號中。</li></ol><p>完成後，重新整理模擬器網頁，即可測試上傳功能。</p></body></html>`;
-            w.document.write(html); w.document.close();
+            window.open('../../cloud-setup.html', '_blank', 'noopener');
         }
 
         const faultOptions = [
@@ -21,7 +16,7 @@
         ];
         
         let currentActiveFault = 'normal';
-        let studentInfo = { class: '', name: '', seat: '' };
+        let studentInfo = { class: '', seat: '' };
         let isAssessmentMode = false;
         let lastResultData = null;
 
@@ -116,8 +111,7 @@
 
         document.getElementById('loginForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            studentInfo.class = document.getElementById('inputClass').value;
-            studentInfo.name = document.getElementById('inputName').value;
+            studentInfo.class = document.getElementById('inputClass').value.trim();
             studentInfo.seat = document.getElementById('inputSeat').value;
             const paperCode = document.getElementById('inputPaper').value;
             const levelCode = document.getElementById('inputLevel').value;
@@ -125,14 +119,14 @@
             const _ctx = { cls: studentInfo.class, seat: studentInfo.seat, paper: paperCode,
                 date: new Date().toISOString().slice(0,10) };
             
-            if(!studentInfo.name) { alert("請輸入姓名"); return; }
+            if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]{0,29}$/u.test(studentInfo.class) || !/^[1-9]\d{0,2}$/.test(studentInfo.seat)) { alert('班級代號限中英文字、數字、底線與連字號，座號限 1～999 的整數'); return; }
             
             if (window.HORN_BANK && typeof window.HORN_BANK.assignFault === 'function') {
                 const _asg = window.HORN_BANK.assignFault(_ctx, _pool);
                 currentActiveFault = _asg.faultId;
                 try { window.__NTC_LAST_ITEM = _asg.item; } catch (e) {}
                 initRepairProgress(_asg.item);
-                if (window.NTC_LOG) { NTC_LOG.clear(); NTC_LOG.setSession({ mode: 'exam', level: levelCode, student: { cls: studentInfo.class, name: studentInfo.name, seat: studentInfo.seat }, paper: paperCode, faultConfigId: _asg.configId, faultId: _asg.faultId }); NTC_LOG.log('exam_start', { paper: paperCode, faultConfigId: _asg.configId, level: levelCode }); }
+                if (window.NTC_LOG) { NTC_LOG.clear(); NTC_LOG.setSession({ mode: 'exam', level: levelCode, student: { cls: studentInfo.class, seat: studentInfo.seat }, paper: paperCode, faultConfigId: _asg.configId, faultId: _asg.faultId }); NTC_LOG.log('exam_start', { paper: paperCode, faultConfigId: _asg.configId, level: levelCode }); }
             } else {
                 const _s = (_ctx.cls || '') + '|' + (_ctx.seat || '') + '|' + (_ctx.paper || '') + '|' + (_ctx.date || '');
                 let _h = 5381;
@@ -145,7 +139,7 @@
 
             document.getElementById('modeDisplay').textContent = "考評模式";
             document.getElementById('modeDisplay').className = "mode-indicator mode-exam";
-            document.getElementById('studentDisplay').textContent = `考生：${studentInfo.class} ${studentInfo.name} (${studentInfo.seat})`;
+            document.getElementById('studentDisplay').textContent = `考生：${studentInfo.class} (${studentInfo.seat})`;
             setModeUI(true);
             document.getElementById('loginModal').classList.add('hidden');
             
@@ -358,8 +352,8 @@
             else { resultTitle.textContent = "❌ 診斷未完全正確"; resultTitle.className = "result-fail"; resultText.textContent = "故障或證據有缺漏，請看明細。"; }
             const rOk = window.NTC_LOG ? NTC_LOG.count('repair_ok') : 0;
             const rMiss = window.NTC_LOG ? NTC_LOG.count('repair_miss') : 0;
-            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class} ${studentInfo.name}<br><strong>找出的故障：</strong>${list(ev.checked)}<br><strong>正確故障：</strong><span style="color:red">${list(ev.correct)}</span><br><strong>量測證據：</strong>${ev.evd.length} 點（命中關鍵 ${ev.evHits.length}）<br><strong>維修紀錄：</strong>成功 ${rOk}／試誤 ${rMiss}`;
-            lastResultData = { studentClass: studentInfo.class, studentName: studentInfo.name, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: list(ev.correct) };
+            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>找出的故障：</strong>${list(ev.checked)}<br><strong>正確故障：</strong><span style="color:red">${list(ev.correct)}</span><br><strong>量測證據：</strong>${ev.evd.length} 點（命中關鍵 ${ev.evHits.length}）<br><strong>維修紀錄：</strong>成功 ${rOk}／試誤 ${rMiss}`;
+            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: list(ev.correct) };
             finishSubmit({ choice: ev.checked.join('+'), correct: ev.pass });
         }
         function finishSubmit(extra) {
@@ -373,7 +367,8 @@
                 lastResultData.resubmits = NTC_LOG.count('diagnosis_submit');
                 if (window.ASSESS && typeof ASSESS.score === 'function') lastResultData.score = ASSESS.score(lastResultData);
                 NTC_LOG.log('diagnosis_submit', Object.assign({ measureCount: lastResultData.measureCount, wireCount: lastResultData.wireCount }, extra || {}));
-                NTC_LOG.archive({ pass: !!lastResultData.isPass, score: (lastResultData.score && lastResultData.score.total) || null, parts: (lastResultData.score && lastResultData.score.parts) || null, multi: !!lastResultData.multi });
+                const archived = NTC_LOG.archive({ pass: !!lastResultData.isPass, score: lastResultData.score ? lastResultData.score.total : null, parts: (lastResultData.score && lastResultData.score.parts) || null, multi: !!lastResultData.multi });
+                lastResultData.recordId = archived ? archived.recordId : null;
             }
             if (lastResultData.score) {
                 const s = lastResultData.score;
@@ -399,36 +394,32 @@
             
             const correctLabel = faultOptions.find(f => f.id === currentActiveFault).label;
             const userLabel = faultOptions.find(f => f.id === userChoice).label;
-            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class} ${studentInfo.name}<br><strong>您的答案：</strong>${userLabel}<br><strong>正確答案：</strong><span style="color:red">${correctLabel}</span>`;
+            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>您的答案：</strong>${userLabel}<br><strong>正確答案：</strong><span style="color:red">${correctLabel}</span>`;
             
-            lastResultData = { studentClass: studentInfo.class, studentName: studentInfo.name, seatNumber: studentInfo.seat, multi: false, track: 'S', userDiagnosis: userLabel, correctFault: correctLabel, isPass: isCorrect };
+            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: false, track: 'S', userDiagnosis: userLabel, correctFault: correctLabel, isPass: isCorrect };
             finishSubmit({ choice: userChoice, correct: isCorrect });
         });
 
         function downloadCSV() {
             if(!lastResultData) return;
             const bom = "\uFEFF"; 
-            const header = "班級,姓名,座號,考生診斷,正確答案,結果\n";
-            const row = `${lastResultData.studentClass},${lastResultData.studentName},${lastResultData.seatNumber},${lastResultData.userDiagnosis},${lastResultData.correctFault},${lastResultData.isPass ? '通過' : '未通過'}\n`;
+            const header = "班級代號,座號,考生診斷,正確答案,結果\n";
+            const row = `${lastResultData.studentClass},${lastResultData.seatNumber},${lastResultData.userDiagnosis},${lastResultData.correctFault},${lastResultData.isPass ? '通過' : '未通過'}\n`;
             const blob = new Blob([bom + header + row], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             const url = URL.createObjectURL(blob);
             link.setAttribute("href", url);
-            link.setAttribute("download", `診斷結果_${lastResultData.studentName}.csv`);
+            link.setAttribute("download", `診斷結果_${lastResultData.studentClass}_${lastResultData.seatNumber}.csv`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
 
-        function uploadToGoogle() {
-            if(!lastResultData) return;
-            if(!TEACHER_GOOGLE_SCRIPT_URL || TEACHER_GOOGLE_SCRIPT_URL.length < 10) { alert("錯誤：教師尚未設定 Google Script 網址。"); return; }
-            const btn = document.querySelector('.btn-upload');
-            btn.textContent = "上傳中...";
-            btn.disabled = true;
-            fetch(TEACHER_GOOGLE_SCRIPT_URL, {
-                method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(lastResultData)
-            }).then(() => { alert("成績已發送至雲端！"); btn.textContent = "上傳成功"; }).catch(err => { console.error(err); alert("上傳失敗，請檢查網路或腳本設定。"); btn.textContent = "上傳失敗"; btn.disabled = false; });
+        function exportSubmission() {
+            if (!lastResultData || !window.NTC_LOG) return;
+            const record = NTC_LOG.history().find(r => r.recordId === lastResultData.recordId);
+            if (!record) { alert('找不到本次提交紀錄，請先確認瀏覽器儲存空間，並保留 CSV 成績。'); return; }
+            NTC_LOG.downloadRecords([record], '電系提交_' + record.recordId + '.json');
         }
 
         const CircuitEngine = {

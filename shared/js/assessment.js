@@ -95,8 +95,10 @@ window.ASSESS = (function () {
       else missing.push(p[0] + '↔' + p[1]);
     });
     var total = rest.length + (u === 'horn' ? 1 : 0);
-    if (ctrl) ok++;
-    else if (u === 'horn') missing.push('relay_85/86↔btn_in');
+    if (u === 'horn') {
+      if (ctrl) ok++;
+      else missing.push('relay_85/86↔btn_in');
+    }
     return { score10: Math.round(ok / total * 10), ok: ok, total: total, missing: missing };
   }
 

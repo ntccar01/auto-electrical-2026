@@ -1,0 +1,20 @@
+<!DOCTYPE html><html lang="zh-TW"><head><base target="_top"><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{font:16px system-ui,sans-serif;max-width:1100px;margin:30px auto;padding:16px;color:#243746;background:#f3f6f8}section{background:white;padding:20px;margin:16px 0;border-radius:10px}button,input{font:inherit;padding:8px;margin:4px}table{border-collapse:collapse;width:100%}th,td{padding:8px;border:1px solid #ccd5df;text-align:left}#status{white-space:pre-wrap} .table-wrap{overflow:auto}button:disabled{opacity:.5}</style></head>
+<body><h1>汽車電系雲端教師端</h1><p>限授權教師帳號使用。匯入檔案為學生端初評，請覆閱後再核章。</p><p id="status" role="status">正在讀取…</p>
+<section><h2>匯入成績</h2><input id="importSemester" placeholder="本批匯入學期，例如 115-1"><input id="file" type="file" accept=".json,application/json"><button id="importBtn">匯入提交檔</button><button id="refresh">重新整理</button><p>使用學生端「匯出提交檔」或本機教師端「匯出雲端提交檔」。重複 ID 會略過；本機核章與調分不會自動轉為雲端核章。</p></section>
+<section><h2>覆閱、調分與核章</h2><div class="table-wrap"><table><thead><tr><th>學期</th><th>單元／題目</th><th>班級／座號</th><th>初評</th><th>調分後</th><th>核章</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div></section>
+<section><h2>核發證書</h2><input id="cls" placeholder="班級代號"><input id="seat" placeholder="座號"><input id="semester" placeholder="學期，例如 115-1"><button id="issue">核發學期已核章紀錄證書</button></section>
+<section><h2>查驗雲端證書</h2><input id="certId" placeholder="證書 ID"><button id="verify">查驗</button><p id="verification"></p></section>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);let busy=false;
+function setBusy(value){busy=value;document.querySelectorAll('button').forEach(b=>b.disabled=value);}
+function rpc(method,args,onSuccess){if(busy)return;setBusy(true);$('status').textContent='處理中…';google.script.run.withFailureHandler(e=>{setBusy(false);$('status').textContent='未完成：'+e.message;}).withSuccessHandler(result=>{setBusy(false);$('status').textContent='已完成';onSuccess(result);})[method](...args);}
+function render(rows){$('rows').replaceChildren();rows.forEach(r=>{const tr=document.createElement('tr');const total=Math.max(0,Math.min(100,r.summary.score+((r.adjust&&r.adjust.delta)||0)));[r.semester,r.unit+' / '+r.faultConfigId,r.cls+' / '+r.seat,r.summary.score,total,r.approved?'已核章':'待覆閱'].forEach(v=>{const td=document.createElement('td');td.textContent=String(v);tr.append(td);});const actions=document.createElement('td');if(!r.approved){const adjust=document.createElement('button');adjust.textContent='調分';adjust.onclick=()=>{const input=prompt('調分（-10～+10 整數）','0');if(input===null)return;const note=prompt('調分說明');if(!note)return;rpc('adjustRecord',[r.recordId,Number(input),note],reload);};const approve=document.createElement('button');approve.textContent='覆閱並核章';approve.onclick=()=>rpc('approveRecord',[r.recordId],reload);actions.append(adjust,approve);}tr.append(actions);$('rows').append(tr);});}
+function reload(){rpc('listRecords',[],render);}
+$('refresh').onclick=reload;
+$('importBtn').onclick=async()=>{const file=$('file').files[0];if(!file){$('status').textContent='請選擇提交檔';return;}if(file.size>1000000){$('status').textContent='檔案不得超過 1 MB';return;}try{const text=await file.text();rpc('importRecords',[text,$('importSemester').value.trim()],result=>{rpc('listRecords',[],rows=>{render(rows);$('status').textContent='已匯入 '+result.imported+' 筆，略過重複 '+result.duplicates+' 筆';});});}catch(e){$('status').textContent='讀取失敗：'+e.message;}};
+$('issue').onclick=()=>rpc('issueCertificate',[$('cls').value.trim(),$('seat').value.trim(),$('semester').value.trim()],cert=>{$('certId').value=cert.certId;$('status').textContent='已核發：'+cert.certId;});
+$('verify').onclick=()=>rpc('verifyCertificate',[$('certId').value.trim()],result=>{$('verification').textContent=result.valid?'雲端查驗通過：'+result.cls+'／座號 '+result.seat+'／'+result.semester:'查無有效證書或簽章不符';});
+reload();
+</script></body></html>

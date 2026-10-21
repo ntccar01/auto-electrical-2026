@@ -1,4 +1,4 @@
-/* 起動單元題庫（V2，9+3 題；C軌第二輪）
+/* 起動單元題庫（V2，8+3 題；C軌第二輪）
  * ID 規則：START-{S|C|W}-NN。考評僅 S 軌（基礎/標準池）；W 軌供練習與教師預覽。
  */
 window.START_BANK = (function () {
@@ -24,15 +24,15 @@ window.START_BANK = (function () {
   var items = [
     { id: 'START-S-01', track: 'S', level: '基礎', modes: ['查修', '綜合'], faults: ['normal'], wiringTrap: null, symptoms: 'ST按下馬達正常搖轉（約180A）', evidencePoints: ['mot_M', 'bat_pos'], weight: 1, hintLevel: 1, enabled: true },
     { id: 'START-S-02', track: 'S', level: '基礎', modes: ['查修', '綜合'], faults: ['fuse_open'], wiringTrap: null, symptoms: '全車無電、ST無反應、保險絲入端有電', evidencePoints: ['fuse_in', 'fuse_out'], weight: 1, hintLevel: 1, enabled: true },
-    { id: 'START-S-03', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['battB_open'], wiringTrap: null, symptoms: '保險絲後有電、電磁B端無電、無吸合聲', evidencePoints: ['fuse_out', 'sol_B'], weight: 1, hintLevel: 2, enabled: true },
+    { id: 'START-S-03', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['battB_open'], wiringTrap: null, symptoms: '控制線圈可吸合但馬達不轉；保險絲後至電磁B的主電源配線斷路，B端可能有線圈回送電壓', evidencePoints: ['fuse_out', 'sol_B'], weight: 1, hintLevel: 2, enabled: true },
     { id: 'START-S-04', track: 'S', level: '基礎', modes: ['查修', '綜合'], faults: ['ns_open'], wiringTrap: null, symptoms: 'ST有電到空檔入端、出端無電、不吸合', evidencePoints: ['ig_ST', 'sol_ST'], weight: 1, hintLevel: 1, enabled: true },
     { id: 'START-S-05', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['solHold_open'], wiringTrap: null, symptoms: 'ST端有電但不吸合；ST-G電阻開路（正常約30Ω）', evidencePoints: ['sol_ST', 'sol_G'], weight: 1, hintLevel: 2, enabled: true },
     { id: 'START-S-06', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['solPull_open'], wiringTrap: null, symptoms: 'ST端有電但不吸合；ST-M電阻開路（正常約2Ω）', evidencePoints: ['sol_ST', 'sol_M'], weight: 1, hintLevel: 2, enabled: true },
-    { id: 'START-S-07', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['bm_fail'], wiringTrap: null, symptoms: '有吸合聲（噠）但馬達不轉；M端無電', evidencePoints: ['sol_B', 'sol_M'], weight: 1, hintLevel: 2, enabled: true },
-    { id: 'START-S-08', track: 'S', level: '基礎', modes: ['查修', '綜合'], faults: ['mot_open'], wiringTrap: null, symptoms: '有吸合聲、M端有電但不轉；M-搭鐵電阻開路', evidencePoints: ['mot_M', 'mot_gnd'], weight: 1, hintLevel: 1, enabled: true },
+    { id: 'START-S-07', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['bm_fail'], wiringTrap: null, symptoms: '有吸合聲（噠）但馬達不轉；B-M有壓降，M端僅有線圈回送電壓', evidencePoints: ['sol_B', 'sol_M'], weight: 1, hintLevel: 2, enabled: true },
+    { id: 'START-S-08', track: 'S', level: '基礎', modes: ['查修', '綜合'], faults: ['mot_open'], wiringTrap: null, symptoms: 'ST端有電但未吸合（本模型馬達斷路切斷吸入線圈搭鐵）；斷電量M-搭鐵電阻開路', evidencePoints: ['mot_M', 'mot_gnd'], weight: 1, hintLevel: 1, enabled: true },
     { id: 'START-W-01', track: 'W', level: '標準', modes: ['查修', '綜合'], faults: ['wireA_open'], wiringTrap: null, symptoms: '保險絲入端無電（電瓶→保險絲段配線斷）', evidencePoints: ['bat_pos', 'fuse_in'], weight: 1, hintLevel: 2, enabled: true },
     { id: 'START-W-02', track: 'W', level: '標準', modes: ['查修', '綜合'], faults: ['wireB_open'], wiringTrap: null, symptoms: 'ST鏈中段無電（點火ST鏈配線斷）', evidencePoints: ['ig_ST', 'sol_ST'], weight: 1, hintLevel: 2, enabled: true },
-    { id: 'START-W-03', track: 'W', level: '標準', modes: ['查修', '綜合'], faults: ['wireC_open'], wiringTrap: null, symptoms: 'M端有電但不轉、搭鐵迴路不通', evidencePoints: ['mot_gnd', 'bat_neg'], weight: 1, hintLevel: 2, enabled: true }
+    { id: 'START-W-03', track: 'W', level: '標準', modes: ['查修', '綜合'], faults: ['wireC_open'], wiringTrap: null, symptoms: 'ST端有電但未吸合；馬達搭鐵配線斷路，吸入線圈迴路不通', evidencePoints: ['mot_gnd', 'bat_neg'], weight: 1, hintLevel: 2, enabled: true }
   ];
 
   var REPAIR_CATALOG = [

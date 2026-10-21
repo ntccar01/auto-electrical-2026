@@ -29,3 +29,7 @@ service-account*
 # Node.js
 node_modules/
 package-lock.json
+
+# 本機驗證產物（包含教材頁面）
+tmp/
+test-results/

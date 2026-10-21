@@ -19,11 +19,10 @@
                 </div>
             </div>
             <div id="stepLogin" class="hidden">
-                <p>請輸入考生資料</p>
+                <p>請輸入班級代號與座號（不收集姓名）</p>
                 <form id="loginForm">
-                    <div class="form-group"><label>班級</label><input type="text" id="inputClass" required></div>
-                    <div class="form-group"><label>姓名</label><input type="text" id="inputName" required></div>
-                    <div class="form-group"><label>座號</label><input type="number" id="inputSeat" required></div>
+                    <div class="form-group"><label>班級代號</label><input type="text" id="inputClass" maxlength="30" autocomplete="off" required></div>
+                    <div class="form-group"><label>座號</label><input type="number" id="inputSeat" min="1" max="999" step="1" required></div>
                     <div class="form-group">
                         <label>試卷別</label>
                         <select id="inputPaper">
@@ -91,7 +90,7 @@
             <p id="resultText"></p>
             <div id="resultDetails" style="text-align:left; background:#ecf0f1; padding:10px; border-radius:5px; margin-bottom:20px;"></div>
             <div class="result-actions">
-                <button onclick="uploadToGoogle()" class="btn-upload">☁️ 上傳成績</button>
+                <button onclick="exportSubmission()" class="btn-upload">📦 匯出提交檔</button>
                 <button onclick="downloadCSV()" class="btn-download">💾 下載 CSV</button>
                 <button onclick="location.reload()" class="btn-restart">🔄 重新開始</button>
             </div>

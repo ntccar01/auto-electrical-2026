@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>雲端成績設定</title><link rel="stylesheet" href="css/style.css"></head>
+<body><main style="max-width:760px;margin:30px auto;padding:24px;background:#ecf0f1;border-radius:10px;color:#2c3e50;line-height:1.8">
+<h1>雲端成績設定</h1><p>目前未連接雲端。考評紀錄暫存在此瀏覽器，教師端可匯出 CSV 保存。</p>
+<ol><li>由教師建立專用 Google 試算表，在「擴充功能 → Apps Script」加入專案 <code>gas/</code> 裡的 Code.gs、Teacher.html 與 appsscript.json。</li><li>在指令碼屬性設定 <code>SPREADSHEET_ID</code> 與 <code>TEACHER_EMAILS</code>（教師帳號，逗號分隔）。不要把簽章金鑰放在前端。</li><li>部署為網頁應用程式，執行身分選教師本人，存取權限選「僅限自己」。授權後開啟並測試；若無法確認登入身分，程式會拒絕存取。</li><li>將部署網址填入 <code>shared/js/config.js</code> 的 <code>gasUrl</code>，並設定 <code>semester</code>。</li><li>學生繳交後按「匯出提交檔」，交給教師；也可由本機教師端按「匯出雲端提交檔」。教師登入雲端教師端後選檔匯入，再覆閱、調分、核章與發證。</li></ol>
+<p>此版採教師匯入流程，不開放學生匿名寫入，也不向公開頁面提供正式證書查詢。雲端程式有本機回歸測試，尚需在您的 Google 帳號部署並驗證實際權限與試算表讀寫。</p>
+<p><a href="index.html">回單元首頁</a> · <a href="teacher.html">教師端</a></p></main></body></html>

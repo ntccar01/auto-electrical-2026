@@ -236,7 +236,7 @@
         }
         function openCloud() {
             var url = (window.NTC_CONFIG && NTC_CONFIG.gasUrl) || '';
-            if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)) {
+            if (!/^https:\/\/script\.google\.com\/(?:macros\/|a\/macros\/[^/]+\/)s\/[A-Za-z0-9_-]+\/exec$/.test(url)) {
                 alert('尚未設定有效的雲端教師端網址，請先依雲端設定教學完成部署。'); return;
             }
             window.open(url, '_blank', 'noopener');

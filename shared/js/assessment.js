@@ -175,6 +175,16 @@ window.ASSESS = (function () {
     var parts = {};
     var item = itemOf(r);
     var n = (item && item.faults.length) || 2;
+    if(unitNow()==='start' && item && item.track==='C') {
+      var count=item.faults.length;
+      parts['故障找出']=Math.round(clamp(((r.faultHits||0)-0.5*(r.faultExtras||0))/count,0,1)*30);
+      parts['量測證據']=Math.round(clamp((r.evidenceStages||0)/count,0,1)*25);
+      parts['分段維修']=clamp(Math.round((r.repairOk||0)/count*25)-5*(r.repairMiss||0),0,25);
+      parts['配線完整']=checkWiring().score10;
+      parts['功能確認']=r.finalConfirmed?10:0;
+      return {total:Object.keys(parts).reduce(function(sum,k){return sum+parts[k];},0),parts:parts};
+    }
+
     var hitRate = clamp(((r.faultHits || 0) - 0.5 * (r.faultExtras || 0)) / n, 0, 1);
     parts['故障找出'] = Math.round(hitRate * 30);
     parts['量測證據'] = (r.evidenceHits >= 2) ? 10 : (r.evidenceHits === 1 ? 5 : 0);

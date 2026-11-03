@@ -26,6 +26,15 @@ let browser;
   page.on('response',r=>{if(r.status()>=400&&!r.url().endsWith('favicon.ico'))errors.push(`${r.status()} ${r.url()}`);});
   await page.goto(base+'/');assert.equal(await page.locator('a.unit-card').count(),2);
   console.log('PASS portal');
+  await page.getByRole('link',{name:'📖 專案開發導覽（進度／歷程／連結）'}).click();
+  assert.equal(await page.locator('#features article').count(),7);assert.equal(await page.locator('#timeline .event').count(),8);
+  const guideLinks=await page.locator('a[href]').evaluateAll(nodes=>nodes.map(a=>a.getAttribute('href')).filter(h=>!h.startsWith('#')&&!h.startsWith('http')));
+  for(const link of guideLinks){assert.equal((await context.request.get(base+'/'+link)).status(),200,link);}
+  await page.locator('#studentUrl').fill('https://example.com/exec');await page.locator('#linkSettings button[type=submit]').click();assert.ok((await page.locator('#savedStatus').innerText()).includes('請使用'));
+  await page.locator('#studentUrl').fill('https://script.google.com/macros/s/TEST_DEPLOYMENT/exec');await page.locator('#linkSettings button[type=submit]').click();assert.equal(await page.locator('#studentCloud').getAttribute('href'),'https://script.google.com/macros/s/TEST_DEPLOYMENT/exec?page=verify');await page.reload();assert.equal(await page.locator('#studentCloud').isVisible(),true);await page.locator('#clearUrl').click();assert.equal(await page.locator('#studentCloud').isVisible(),false);
+  await page.screenshot({path:path.join(output,'project-guide.png'),fullPage:true});await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:path.join(output,'project-guide-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1080});
+  console.log('PASS development guide links, local URL setting, persistence and mobile layout');
+
   for(const [unit,wires] of [['start',START_WIRES],['horn',HORN_WIRES]]) {
     await page.goto(`${base}/units/${unit}/`);
     await page.getByRole('button',{name:'🔨 進入練習模式'}).click();
@@ -104,7 +113,7 @@ let browser;
   // Real cloud page + real GAS functions, with Google services replaced by local mocks.
   const {makeGAS}=require('./gas-helpers.cjs');const gas=makeGAS();
   const cp=await context.newPage();cp.setDefaultTimeout(10000);cp.on('pageerror',e=>errors.push(e.message));
-  await cp.exposeFunction('gasCall',(method,args)=>{assert.ok(['listRecords','importRecords','adjustRecord','approveRecord','issueCertificate','verifyCertificate'].includes(method));return gas.ctx[method](...args);});
+  await cp.exposeFunction('gasCall',(method,args)=>{assert.ok(['listRecords','importRecords','adjustRecord','approveRecord','issueCertificate','verifyCertificate','getStudentVerifyUrl','verifyStudentCertificate','issueInterviewReport','verifyInterviewReport'].includes(method));return gas.ctx[method](...args);});
   await cp.addInitScript(()=>{function chain(){let success=()=>{},failure=()=>{};let proxy;proxy=new Proxy({}, {get(_,key){if(key==='withSuccessHandler')return fn=>{success=fn;return proxy;};if(key==='withFailureHandler')return fn=>{failure=fn;return proxy;};return (...args)=>window.gasCall(key,args).then(success).catch(failure);}});return proxy;}window.google={script:{get run(){return chain();}}};});
   await cp.goto(base+'/gas/Teacher.html');
   await cp.locator('#importSemester').fill('115-1');await cp.locator('#file').setInputFiles(path.join(output,'start-submission.json'));await cp.locator('#importBtn').click();
@@ -115,11 +124,45 @@ let browser;
   await cp.getByRole('button',{name:'覆閱並核章',exact:true}).click();await cp.waitForFunction(()=>document.querySelector('#rows').textContent.includes('已核章'));
   await cp.locator('#cls').fill('TEST_A');await cp.locator('#seat').fill('1');await cp.locator('#semester').fill('115-1');await cp.locator('#issue').click();
   await cp.waitForFunction(()=>document.getElementById('certId').value.startsWith('NTC-')&&!document.getElementById('verify').disabled);
+  const cloudCertId=await cp.locator('#certId').inputValue();
+  await cp.waitForFunction(()=>document.getElementById('studentLink').value.includes('?page=verify&id=')&&!document.getElementById('copyStudentLink').disabled);
+  const studentLink=await cp.locator('#studentLink').inputValue();assert.ok(studentLink.endsWith('?page=verify&id='+encodeURIComponent(cloudCertId)));
   await cp.locator('#verify').click();await cp.waitForFunction(()=>document.getElementById('verification').textContent.includes('雲端查驗通過'));
   assert.ok(!(await cp.locator('#verification').textContent()).includes('TEST_A'));
-  await cp.screenshot({path:path.join(output,'cloud-teacher-local.png'),fullPage:true});await cp.close();
-  console.log('PASS cloud teacher UI with local GAS mocks: import, review, approval, signed certificate and masked verification');
+  await cp.screenshot({path:path.join(output,'cloud-teacher-local.png'),fullPage:true});
+  await cp.locator('#reportConsent').check();await cp.locator('#issueReport').click();await cp.waitForFunction(()=>document.getElementById('reportLink').value.includes('page=interview'));
+  const reportLink=await cp.locator('#reportLink').inputValue(),reportId=new URL(reportLink).searchParams.get('id');
+  await cp.goto(base+'/gas/InterviewReport.html?id='+reportId);await cp.waitForFunction(()=>document.getElementById('status').textContent.includes('查驗通過'));
+  assert.ok((await cp.locator('#facts').innerText()).includes('TEST_A'));assert.equal(await cp.locator('#records tr').count(),1);await cp.emulateMedia({media:'print'});assert.equal(await cp.locator('#report').isVisible(),true);await cp.screenshot({path:path.join(output,'interview-report.png'),fullPage:true});await cp.emulateMedia({media:'screen'});
+  await cp.goto(base+'/gas/StudentVerify.html?id='+encodeURIComponent(cloudCertId));await cp.getByRole('button',{name:'查驗證書'}).click();
+  await cp.waitForFunction(()=>document.getElementById('status').textContent.includes('查驗通過'));
+  const studentCard=await cp.locator('#certificate').innerText();assert.ok(studentCard.includes('T＊＊'));assert.ok(studentCard.includes('＊＊'));assert.ok(studentCard.includes('115-1'));assert.ok(!studentCard.includes('TEST_A'));
+  assert.equal(await cp.locator('#certificate dd').count(),6);assert.equal(await cp.locator('#printBtn').isVisible(),true);await cp.screenshot({path:path.join(output,'cloud-student-certificate.png'),fullPage:true});
+  await cp.locator('#certId').fill('NTC-unknown');await cp.getByRole('button',{name:'查驗證書'}).click();await cp.waitForFunction(()=>document.getElementById('status').textContent.includes('查無有效證書'));
+  await cp.close();
+  console.log('PASS cloud teacher and student certificate pages with local GAS mocks: issue, share link, masked verification and print view');
 
+
+  for(const id of ['START-C-01','START-C-02','START-C-03']) {
+    const c=await context.newPage();c.on('pageerror',e=>errors.push(e.message));
+    await c.goto(base+'/units/start/');
+    await c.evaluate(id=>{const item=START_BANK.getById(id);START_BANK.assignFault=()=>({configId:id,faultId:item.faults[0],item});},id);
+    await c.getByRole('button',{name:'📝 進入考評模式'}).click();await c.locator('#inputClass').fill('TEST_C');await c.locator('#inputSeat').fill('1');await c.locator('#inputLevel').selectOption('challenge');await c.getByRole('button',{name:'開始考評'}).click();
+    assert.equal(await c.locator('#repairBtn').isVisible(),true);
+    for(const [a,b] of START_WIRES){await c.locator(`.conn-point[data-id="${a}"]`).click({force:true});await c.locator(`.conn-point[data-id="${b}"]`).click({force:true});}
+    await c.locator('#repairBtn').click();assert.ok(!(await c.locator('#repairStages').innerText()).includes('保險絲斷路'));
+    const stages=await c.evaluate(()=>__NTC_LAST_ITEM.stages);if(id==='START-C-03')stages.reverse();
+    for(const stage of stages){
+      await c.locator('#repairDiagnosis').selectOption(stage.fault);await c.locator(`input[name=rep][value="${stage.repair}"]`).check();
+      await c.getByRole('button',{name:'確認更換',exact:true}).click();assert.ok((await c.locator('#repairMsg').innerText()).includes('先完成'));
+      // Feed a probe event using the real circuit solver; physical dragging is covered above.
+      await c.evaluate(fault=>{const rule=repairEvidenceRules[fault],pair=rule.pairs[0];igPos=rule.kind==='voltage'?'ST':'OFF';runSimulation();NTC_LOG.log('probe_measure',{red:pair[0],black:pair[1],mode:rule.kind==='voltage'?'DCV':'Ω',ignition:igPos,gear:gearPos,pressed:igPos==='ST',valid:true,reading:String(rule.kind==='voltage'?CircuitEngine.getVoltageAtNode(pair[0],true,window.__bmMech)-CircuitEngine.getVoltageAtNode(pair[1],true,window.__bmMech):CircuitEngine.getResistance(pair[0],pair[1]))});},stage.fault);
+      await c.getByRole('button',{name:'確認更換',exact:true}).click();assert.ok((await c.locator('#repairMsg').innerText()).includes('維修成功'));
+    }
+    await c.locator('#cancelRepairBtn').click();await c.locator('#igOffBtn').click();const box=await c.locator('#igStBtn').boundingBox();await c.mouse.move(box.x+box.width/2,box.y+box.height/2);await c.mouse.down();assert.equal(await c.locator('#crankAmps').innerText(),'180');await c.mouse.up();
+    await c.locator('#submitAnswerBtn').click();await c.locator('#confirmSubmitBtn').click();assert.ok((await c.locator('#resultTitle').innerText()).includes('診斷正確'));assert.ok((await c.locator('#resultDetails').innerText()).includes('100 分'));await c.screenshot({path:path.join(output,id+'.png'),fullPage:true});await c.close();
+  }
+  console.log('PASS start C three challenge cases: evidence gate, staged repair, restored cranking and 100-point scoring');
   // Touch context: tablet layout and actual Pointer Events via touchscreen taps.
   const touch=await browser.newContext({viewport:{width:1024,height:1366},hasTouch:true,isMobile:true});const tp=await touch.newPage();
   tp.on('pageerror',e=>errors.push(e.message));await tp.goto(base+'/units/start/');await tp.getByRole('button',{name:'🔨 進入練習模式'}).tap();

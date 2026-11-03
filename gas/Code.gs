@@ -37,12 +37,21 @@ function normalized_(r, semester) {
   var score = r.summary && r.summary.score;
   if (typeof score !== 'number' || !isFinite(score) || score<0 || score>100) throw new Error('初評分數須為 0～100。');
   var parts={};var source=(r.summary && r.summary.parts)||{};
-  ['結果正確','結果相近','量測覆蓋','檔位運用','配線完整','用時','一次繳交','故障找出','量測證據','分段維修'].forEach(function(k){if(typeof source[k]==='number'&&isFinite(source[k])&&source[k]>=0&&source[k]<=100)parts[k]=source[k];});
+  ['結果正確','結果相近','量測覆蓋','檔位運用','配線完整','用時','一次繳交','故障找出','量測證據','分段維修','功能確認'].forEach(function(k){if(typeof source[k]==='number'&&isFinite(source[k])&&source[k]>=0&&source[k]<=100)parts[k]=source[k];});
   return {recordId:id_(r.recordId),sid:id_(r.sid),unit:r.unit,cls:code_(r.cls,'班級代號'),seat:seat_(r.seat),semester:code_(semester || r.semester,'學期'),
     paper:/^[A-E]$/.test(r.paper)?r.paper:'',faultConfigId:/^(HORN|START)-[SCW]-\d{2}$/.test(r.faultConfigId)?r.faultConfigId:'',
     summary:{score:score,pass:r.summary.pass===true,multi:r.summary.multi===true,parts:parts}};
 }
-function doGet() { teacher_();return HtmlService.createHtmlOutputFromFile('Teacher').setTitle('汽車電系雲端教師端'); }
+function doGet(e) {
+  if (e && e.parameter && e.parameter.page === 'verify') {
+    var page=HtmlService.createTemplateFromFile('StudentVerify');
+    page.certificateId=String(e.parameter.id||'');
+    return page.evaluate().setTitle('汽車電系雲端證書查驗');
+  }
+  if(e&&e.parameter&&e.parameter.page==='interview')return HtmlService.createHtmlOutputFromFile('InterviewReport').setTitle('面試學習歷程報告');
+  teacher_();
+  return HtmlService.createHtmlOutputFromFile('Teacher').setTitle('汽車電系雲端教師端');
+}
 function listRecords() { teacher_();return locked_(function(){return rows_(sheet_('NTC_Grades')).map(function(r){return r.data;});}); }
 function importRecords(text, semester) {
   var email=teacher_();
@@ -74,6 +83,30 @@ function approveRecord(id) {
 }
 function total_(r) {return Math.max(0,Math.min(100,r.summary.score+((r.adjust&&r.adjust.delta)||0)));}
 function signature_(raw,key) {return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(raw,key));}
+function certificatePayload_(id) {
+  var hit=rows_(sheet_('NTC_Certificates')).filter(function(r){return r.id===id;})[0];
+  var key=PropertiesService.getScriptProperties().getProperty('CERT_SIGNING_KEY');
+  if(!hit||!key||!hit.data||typeof hit.data.payload!=='string'||typeof hit.data.signature!=='string'||signature_(hit.data.payload,key)!==hit.data.signature)return null;
+  try {
+    var payload=JSON.parse(hit.data.payload);
+    if(!payload||payload.certId!==id||!payload.cls||!payload.seat||!payload.semester||!Array.isArray(payload.records)||!payload.records.length)return null;
+    return payload;
+  } catch(e) { return null; }
+}
+function certificateSummary_(payload) {
+  return {valid:true,certId:payload.certId,cls:payload.cls.slice(0,1)+'＊＊',seat:'＊＊',semester:payload.semester,
+    units:Array.from(new Set(payload.records.map(function(r){return r.unit;}).filter(function(unit){return ['horn','start'].indexOf(unit)>=0;}))),at:payload.at};
+}
+function verifyStudentCertificate(id) {
+  id=String(id||'').trim();
+  if(!/^NTC-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))return {valid:false};
+  return locked_(function(){var payload=certificatePayload_(id);return payload?certificateSummary_(payload):{valid:false};});
+}
+function getStudentVerifyUrl() {
+  teacher_();
+  var url=String(PropertiesService.getScriptProperties().getProperty('STUDENT_VERIFY_URL')||'').trim().replace(/\/+$/,'');
+  return /^https:\/\/script\.google\.com\/(?:macros\/|a\/macros\/[A-Za-z0-9.-]+\/)s\/[A-Za-z0-9_-]+\/exec$/.test(url)?url:'';
+}
 function issueCertificate(cls,seat,semester) {
   var email=teacher_();cls=code_(cls,'班級代號');seat=seat_(seat);semester=code_(semester,'學期');
   return locked_(function(){
@@ -90,11 +123,42 @@ function issueCertificate(cls,seat,semester) {
 function verifyCertificate(id) {
   teacher_();id=id_(id);
   return locked_(function(){
-    var hit=rows_(sheet_('NTC_Certificates')).filter(function(r){return r.id===id;})[0];
-    var key=PropertiesService.getScriptProperties().getProperty('CERT_SIGNING_KEY');
-    if(!hit||!key||signature_(hit.data.payload,key)!==hit.data.signature)return {valid:false};
-    var p=JSON.parse(hit.data.payload);
-    if(p.certId!==id)return {valid:false};
-    return {valid:true,certId:p.certId,cls:p.cls.slice(0,1)+'＊＊',seat:'＊＊',semester:p.semester,units:Array.from(new Set(p.records.map(function(r){return r.unit;}))),at:p.at};
+    var payload=certificatePayload_(id);
+    return payload?certificateSummary_(payload):{valid:false};
+  });
+}
+
+function issueInterviewReport(cls,seat,semester,consent) {
+  teacher_();
+  if(consent!==true)throw new Error('請先確認學生同意提供面試報告。');
+  cls=code_(cls,'班級代號');seat=seat_(seat);semester=code_(semester,'學期');
+  return locked_(function(){
+    var records=rows_(sheet_('NTC_Grades')).map(function(r){return r.data;}).filter(function(r){return r.cls===cls&&r.seat===seat&&r.semester===semester&&r.approved;}).map(function(r){
+      return {unit:r.unit,task:r.faultConfigId,initialScore:r.summary.score,finalScore:total_(r),parts:r.summary.parts,approvedAt:r.approved.at};
+    });
+    if(!records.length)throw new Error('尚無已核章紀錄。');
+    var now=new Date(),payload={reportId:'NTR-'+Utilities.getUuid(),cls:cls,seat:seat,semester:semester,issuedAt:now.toISOString(),expiresAt:new Date(now.getTime()+30*86400000).toISOString(),records:records};
+    var props=PropertiesService.getScriptProperties(),key=props.getProperty('CERT_SIGNING_KEY');
+    if(!key){key=Utilities.getUuid()+Utilities.getUuid();props.setProperty('CERT_SIGNING_KEY',key);}
+    var raw=JSON.stringify(payload),sheet=sheet_('NTC_InterviewReports');
+    sheet.getRange(sheet.getLastRow()+1,1,1,2).setValues([[payload.reportId,JSON.stringify({payload:raw,signature:signature_(raw,key)})]]);
+    return {reportId:payload.reportId,expiresAt:payload.expiresAt};
+  });
+}
+function verifyInterviewReport(id) {
+  id=String(id||'').trim();
+  if(!/^NTR-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))return {valid:false};
+  return locked_(function(){
+    var props=PropertiesService.getScriptProperties(),bookId=props.getProperty('SPREADSHEET_ID'),key=props.getProperty('CERT_SIGNING_KEY');
+    if(!bookId||!key)return {valid:false};
+    var sheet=SpreadsheetApp.openById(bookId).getSheetByName('NTC_InterviewReports');
+    if(!sheet)return {valid:false};
+    try {
+      var hit=rows_(sheet).filter(function(r){return r.id===id;})[0];
+      if(!hit||signature_(hit.data.payload,key)!==hit.data.signature)return {valid:false};
+      var payload=JSON.parse(hit.data.payload),expiry=new Date(payload.expiresAt).getTime();
+      if(payload.reportId!==id||!isFinite(expiry)||Date.now()>=expiry)return {valid:false};
+      return {valid:true,report:payload};
+    }catch(e){return {valid:false};}
   });
 }

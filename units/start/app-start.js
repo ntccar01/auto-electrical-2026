@@ -22,6 +22,8 @@
 
         function choosePracticeMode() {
             isAssessmentMode = false;
+            repairProgress=null;
+            faultState=freshFaultState();
             currentActiveFault = 'normal';
             document.getElementById('modeDisplay').textContent = "練習模式";
             document.getElementById('modeDisplay').className = "mode-indicator mode-practice";
@@ -80,7 +82,7 @@
             const guideBtn = document.getElementById('setupGuideBtn');
 
             const repairBtn = document.getElementById('repairBtn');
-            repairBtn.classList.add('hidden'); // 起動單元C軌第二輪，考評一律隱藏維修鈕
+            repairBtn.classList.toggle('hidden', !isExam || !repairProgress);
             if (isExam) {
                 faultBtn.classList.add('hidden');
                 toExamBtn.classList.add('hidden');
@@ -135,7 +137,7 @@
                 try { repairProgress = null; } catch (e) {}
             }
             try { window.__NTC_LAST_CTX = _ctx; } catch (e) {}
-            updateFaultStateFromRandom();
+            if (!repairProgress) updateFaultStateFromRandom();
 
             document.getElementById('modeDisplay').textContent = "考評模式";
             document.getElementById('modeDisplay').className = "mode-indicator mode-exam";
@@ -247,29 +249,39 @@
             }
             applyFaultList(item.faults);
             currentActiveFault = '__multi__';
-            repairProgress = { configId: item.id, parallel: !!item.parallel, stages: item.stages.map(s => ({ fault: s.fault, repair: s.repair, done: false })) };
+            repairProgress = { checkpoint: 0, finalConfirmed: false, configId: item.id, parallel: !!item.parallel, stages: item.stages.map(s => ({ fault: s.fault, repair: s.repair, done: false })) };
         }
         function repairStageDoneCount() {
             if (!repairProgress) return 0;
             return repairProgress.stages.filter(s => s.done).length;
         }
         // 申請維修：repairKey 來自 REPAIR_CATALOG；回傳 {ok, msg}
-        function requestRepair(repairKey) {
+        function requestRepair(repairKey, diagnosis) {
             if (!repairProgress) return { ok: false, msg: '本次考評無需維修，直接繳交診斷報告即可。' };
             const cat = (window.START_BANK && window.START_BANK.REPAIR_CATALOG) || [];
             const entry = cat.find(c => c.key === repairKey);
             if (!entry) return { ok: false, msg: '未知的維修項目。' };
             const openStages = repairProgress.stages.map((s, i) => ({ s, i })).filter(o => !o.s.done);
             if (!openStages.length) return { ok: false, msg: '所有階段皆已修復，請繳交診斷報告。' };
-            // 非並聯題只能修當前第一階段；並聯題任一未修階段皆可
-            const candidates = repairProgress.parallel ? openStages : [openStages[0]];
-            const hit = candidates.find(o => entry.fixes.includes(o.s.fault));
-            if (window.NTC_LOG) NTC_LOG.log(hit ? 'repair_ok' : 'repair_miss', { repair: repairKey, stage: hit ? hit.i : candidates[0].i });
-            if (!hit) return { ok: false, msg: '更換後故障依舊（試誤一次，已記錄）。請重新量測確認。' };
+            const candidate = openStages.find(o => o.s.fault === diagnosis);
+            const measured = repairMeasurements();
+            const rule = repairEvidenceRules[diagnosis];
+            const supported = rule && measured.some(e => {
+                const d=e.data||{};
+                return d.valid===true && d.reading && d.red && d.black && (diagnosis!=='ns_open'||d.gear==='P'||d.gear==='N') && rule.pairs.some(pair => pair.includes(d.red)&&pair.includes(d.black)&&d.red!==d.black) &&
+                    (rule.kind==='voltage' ? /V/.test(d.mode)&&d.pressed===true : /Ω|K/.test(d.mode)&&d.ignition==='OFF');
+            });
+            if (!supported) return {ok:false,msg:'請先完成所選診斷的兩端有效量測：電壓須按住 ST；電阻須關閉點火。'};
+            const hit = candidate && entry.fixes.includes(diagnosis) ? candidate : null;
+            if(window.NTC_LOG)NTC_LOG.log(hit?'repair_ok':'repair_miss',{repair:repairKey,diagnosis:diagnosis});
+            if(!hit)return {ok:false,msg:'診斷或維修項目不符，已記錄一次試誤；請重新量測。'};
             hit.s.done = true;
             const inv = FAULT_PICK_MAP[hit.s.fault];
             if (inv) faultState[inv[0]] = 'Normal';
+            repairProgress.finalConfirmed=false;
+            repairProgress.awaitRelease=true;
             runSimulation();
+            repairProgress.checkpoint=NTC_LOG.exportData().events.length;
             const left = repairProgress.stages.filter(s => !s.done).length;
             return { ok: true, msg: '維修成功：' + entry.label + '完成，相關故障已排除。' + (left ? '還有 ' + left + ' 個階段，請繼續查修。' : '全部修復完成，請繳交診斷報告。') };
         }
@@ -312,14 +324,22 @@
             document.getElementById('quizEvidence').innerHTML = EVIDENCE_NODES.map(n => `<div class="radio-item"><label><input type="checkbox" name="mevd" value="${n[0]}"> ${n[1]}</label></div>`).join('');
         }
         function stageHtml() {
-            const st = repairProgress.stages.map((s, i) => `${i + 1}. ${faultLabel(s.fault)}：${s.done ? '已修復✓' : '待查修'}`).join('<br>');
-            return `<strong>${repairProgress.configId} 階段進度</strong><br>${st}`;
+            return `<strong>維修進度：${repairStageDoneCount()}／${repairProgress.stages.length} 階段完成</strong><p>每次維修前須重新量測並提出診斷；修復全部故障後，重新按住 ST 確認搖轉。</p>`;
         }
+        const repairEvidenceRules={
+            fuse_open:{kind:'resistance',pairs:[['fuse_in','fuse_out']]},
+            ns_open:{kind:'resistance',pairs:[['ns_in','ns_out']]},
+            battB_open:{kind:'resistance',pairs:[['fuse_out','sol_B']]},
+            mot_open:{kind:'resistance',pairs:[['mot_M','mot_gnd']]},
+            bm_fail:{kind:'voltage',pairs:[['sol_B','sol_M']]}
+        };
+        function repairMeasurements(){return window.NTC_LOG?NTC_LOG.exportData().events.slice(repairProgress.checkpoint).filter(e=>e.type==='probe_measure'):[];}
+
         function openRepairModal() {
             if (!repairProgress) { alert('本次考評為單一故障，無需維修，直接繳交診斷報告即可。'); return; }
             document.getElementById('repairStages').innerHTML = stageHtml();
             const cat = window.START_BANK.REPAIR_CATALOG;
-            document.getElementById('repairList').innerHTML = cat.map(c => `<div class="radio-item repair-item"><label><input type="radio" name="rep" value="${c.key}"> ${c.label}</label></div>`).join('') + `<button class="btn-primary" onclick="doRepair()">確認更換</button>`;
+            document.getElementById('repairList').innerHTML = '<label>量測後的診斷 <select id="repairDiagnosis"><option value="">請選擇</option>'+faultOptions.filter(f=>f.id!=='normal').map(f=>`<option value="${f.id}">${f.label}</option>`).join('')+'</select></label><p>先 OFF 量保險絲、空檔開關（P/N）、B 主線或馬達兩端電阻；B-M 接點量測需按住 ST 比較 B、M 電壓。</p>'+cat.map(c => `<div class="radio-item repair-item"><label><input type="radio" name="rep" value="${c.key}"> ${c.label}</label></div>`).join('') + `<button class="btn-primary" onclick="doRepair()">確認更換</button>`;
             document.getElementById('repairMsg').textContent = '';
             document.getElementById('repairModal').classList.remove('hidden');
         }
@@ -327,7 +347,7 @@
             const sel = document.querySelector('input[name="rep"]:checked');
             const msg = document.getElementById('repairMsg');
             if (!sel) { msg.textContent = '請先選擇要更換的零件。'; msg.style.color = '#c0392b'; return; }
-            const r = requestRepair(sel.value);
+            const r = requestRepair(sel.value,document.getElementById('repairDiagnosis').value);
             msg.textContent = r.msg;
             msg.style.color = r.ok ? '#27ae60' : '#c0392b';
             if (r.ok) document.getElementById('repairStages').innerHTML = stageHtml();
@@ -338,9 +358,9 @@
             const checked = Array.from(document.querySelectorAll('input[name="mdiag"]:checked')).map(x => x.value);
             const evd = Array.from(document.querySelectorAll('input[name="mevd"]:checked')).map(x => x.value);
             const hits = correct.filter(f => checked.includes(f));
-            const extras = checked.filter(f => f !== 'normal' && !correct.includes(f));
-            const evHits = (item.evidencePoints || []).filter(p => evd.includes(p));
-            const pass = hits.length === correct.length && extras.length === 0 && evd.length >= 2 && evHits.length >= 1;
+            const extras = checked.filter(f => !correct.includes(f));
+            const evHits = NTC_LOG.probeCoverage().filter(p=>evd.includes(p));
+            const pass = hits.length === correct.length && extras.length === 0 && repairStageDoneCount()===correct.length && repairProgress.finalConfirmed && ASSESS.checkWiring().score10===10;
             return { correct, checked, evd, hits, extras, evHits, pass };
         }
         function submitMulti() {
@@ -355,7 +375,7 @@
             const rOk = window.NTC_LOG ? NTC_LOG.count('repair_ok') : 0;
             const rMiss = window.NTC_LOG ? NTC_LOG.count('repair_miss') : 0;
             resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>找出的故障：</strong>${list(ev.checked)}<br><strong>正確故障：</strong><span style="color:red">${list(ev.correct)}</span><br><strong>量測證據：</strong>${ev.evd.length} 點（命中關鍵 ${ev.evHits.length}）<br><strong>維修紀錄：</strong>成功 ${rOk}／試誤 ${rMiss}`;
-            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: list(ev.correct) };
+            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, evidenceStages: repairStageDoneCount(), finalConfirmed: repairProgress.finalConfirmed, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: list(ev.correct) };
             finishSubmit({ choice: ev.checked.join('+'), correct: ev.pass });
         }
         function finishSubmit(extra) {
@@ -605,6 +625,8 @@
             const ampEl = document.getElementById('crankAmps');
             if (ampEl) ampEl.textContent = amps;
 
+            if(repairProgress&&igPos!=='ST')repairProgress.awaitRelease=false;
+            if(crank&&repairProgress&&!repairProgress.awaitRelease&&repairProgress.stages.every(s=>s.done))repairProgress.finalConfirmed=true;
             if (crank) { statusMsg.innerText = "搖轉起動中（約180A）"; statusMsg.style.color = "#2ecc71"; }
             else if (bmMech) { statusMsg.innerText = "電磁開關吸合（噠），馬達未搖轉"; statusMsg.style.color = "#f39c12"; }
             else if (vST > 10) { statusMsg.innerText = "ST已送電但未吸合（檢查線圈搭鐵迴路）"; statusMsg.style.color = "#f39c12"; }
@@ -699,7 +721,7 @@
             runSimulation();
             // 接觸組合改變才記一次量測事件（含當時檔位與讀值，避免拖曳洗版）
             if (window.NTC_LOG && (probeContact.red !== _prR || probeContact.black !== _prB) && (probeContact.red || probeContact.black)) {
-                NTC_LOG.log('probe_measure', { red: probeContact.red, black: probeContact.black, mode: knobModes[currentModeIndex].label, reading: document.getElementById('meter-display').textContent, pressed: (typeof igPos !== 'undefined' && igPos === 'ST') });
+                NTC_LOG.log('probe_measure', { red: probeContact.red, black: probeContact.black, mode: knobModes[currentModeIndex].label, reading: document.getElementById('meter-display').textContent, ignition:igPos, gear:gearPos, valid:probeState.red.jack==='volts'&&probeState.black.jack==='com', pressed: (typeof igPos !== 'undefined' && igPos === 'ST') });
             }
             probeContact._lr = probeContact.red; probeContact._lb = probeContact.black;
         }

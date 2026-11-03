@@ -1,6 +1,6 @@
 const fs=require('node:fs');const path=require('node:path');const vm=require('node:vm');const crypto=require('node:crypto');
 function makeGAS() {
-  const properties=new Map([['SPREADSHEET_ID','test-sheet'],['TEACHER_EMAILS','teacher@example.invalid']]);
+  const properties=new Map([['SPREADSHEET_ID','test-sheet'],['TEACHER_EMAILS','teacher@example.invalid'],['STUDENT_VERIFY_URL','https://script.google.com/macros/s/TEST_PUBLIC_DEPLOYMENT/exec']]);
   const sheets=new Map();let email='teacher@example.invalid',sheetAccess=0;
   function sheet(name) {
     const data=[];
@@ -16,7 +16,7 @@ function makeGAS() {
     SpreadsheetApp:{openById:()=>{sheetAccess++;return book;}},
     LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},
     Utilities:{getUuid:()=>crypto.randomUUID(),computeHmacSha256Signature:(raw,key)=>Array.from(crypto.createHmac('sha256',key).update(raw).digest()),base64EncodeWebSafe:bytes=>Buffer.from(bytes).toString('base64url')},
-    HtmlService:{createHtmlOutputFromFile:()=>({setTitle:()=>({})})}
+    HtmlService:{createHtmlOutputFromFile:file=>({file,setTitle(title){this.title=title;return this;}}),createTemplateFromFile:file=>({file,certificateId:'',evaluate(){return {file,certificateId:this.certificateId,setTitle(title){this.title=title;return this;}};}})}
   };
   vm.createContext(ctx);vm.runInContext(fs.readFileSync(path.join(__dirname,'../gas/Code.gs'),'utf8'),ctx,{filename:'Code.gs'});
   return {ctx,sheets,properties,setEmail:value=>{email=value;},sheetAccess:()=>sheetAccess};

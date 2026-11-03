@@ -1,5 +1,5 @@
-/* 起動單元題庫（V2，8+3 題；C軌第二輪）
- * ID 規則：START-{S|C|W}-NN。考評僅 S 軌（基礎/標準池）；W 軌供練習與教師預覽。
+/* 起動單元題庫（V2.1，8S＋3W＋3C 題）
+ * ID 規則：START-{S|C|W}-NN。考評 S 軌（基礎/標準）及 C 軌（挑戰）；W 軌供練習與教師預覽。
  */
 window.START_BANK = (function () {
   var BANK_VERSION = '2.0';
@@ -30,6 +30,9 @@ window.START_BANK = (function () {
     { id: 'START-S-06', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['solPull_open'], wiringTrap: null, symptoms: 'ST端有電但不吸合；ST-M電阻開路（正常約2Ω）', evidencePoints: ['sol_ST', 'sol_M'], weight: 1, hintLevel: 2, enabled: true },
     { id: 'START-S-07', track: 'S', level: '標準', modes: ['查修', '綜合'], faults: ['bm_fail'], wiringTrap: null, symptoms: '有吸合聲（噠）但馬達不轉；B-M有壓降，M端僅有線圈回送電壓', evidencePoints: ['sol_B', 'sol_M'], weight: 1, hintLevel: 2, enabled: true },
     { id: 'START-S-08', track: 'S', level: '基礎', modes: ['查修', '綜合'], faults: ['mot_open'], wiringTrap: null, symptoms: 'ST端有電但未吸合（本模型馬達斷路切斷吸入線圈搭鐵）；斷電量M-搭鐵電阻開路', evidencePoints: ['mot_M', 'mot_gnd'], weight: 1, hintLevel: 1, enabled: true },
+    {id:'START-C-01',track:'C',level:'挑戰',modes:['查修','綜合'],faults:['fuse_open', 'ns_open'],evidencePoints:[],enabled:true,parallel:true,stages:[{'fault': 'fuse_open', 'repair': 'fuse'}, {'fault': 'ns_open', 'repair': 'ns'}]},
+    {id:'START-C-02',track:'C',level:'挑戰',modes:['查修','綜合'],faults:['ns_open', 'battB_open'],evidencePoints:[],enabled:true,parallel:true,stages:[{'fault': 'ns_open', 'repair': 'ns'}, {'fault': 'battB_open', 'repair': 'wireB'}]},
+    {id:'START-C-03',track:'C',level:'挑戰',modes:['查修','綜合'],faults:['bm_fail', 'mot_open'],evidencePoints:[],enabled:true,parallel:true,stages:[{'fault': 'bm_fail', 'repair': 'solenoid'}, {'fault': 'mot_open', 'repair': 'motor'}]},
     { id: 'START-W-01', track: 'W', level: '標準', modes: ['查修', '綜合'], faults: ['wireA_open'], wiringTrap: null, symptoms: '保險絲入端無電（電瓶→保險絲段配線斷）', evidencePoints: ['bat_pos', 'fuse_in'], weight: 1, hintLevel: 2, enabled: true },
     { id: 'START-W-02', track: 'W', level: '標準', modes: ['查修', '綜合'], faults: ['wireB_open'], wiringTrap: null, symptoms: 'ST鏈中段無電（點火ST鏈配線斷）', evidencePoints: ['ig_ST', 'sol_ST'], weight: 1, hintLevel: 2, enabled: true },
     { id: 'START-W-03', track: 'W', level: '標準', modes: ['查修', '綜合'], faults: ['wireC_open'], wiringTrap: null, symptoms: 'ST端有電但未吸合；馬達搭鐵配線斷路，吸入線圈迴路不通', evidencePoints: ['mot_gnd', 'bat_neg'], weight: 1, hintLevel: 2, enabled: true }

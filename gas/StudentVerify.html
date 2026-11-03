@@ -1,0 +1,32 @@
+<!DOCTYPE html><html lang="zh-TW"><head><base target="_top"><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>汽車電系雲端證書查驗</title>
+<style>
+:root{color-scheme:light;font-family:system-ui,"Noto Sans TC",sans-serif;color:#17324a;background:#f3f6f8}*{box-sizing:border-box}body{margin:0;padding:24px 16px}.page{max-width:760px;margin:0 auto}header,section{background:#fff;border-radius:14px;padding:24px;margin-bottom:18px;box-shadow:0 2px 12px #17324a0b}h1{font-size:1.65rem;margin:0 0 8px}h2{font-size:1.35rem;margin:0 0 18px}.muted{color:#526579;line-height:1.65}form{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}input,button{font:inherit;padding:11px 12px;border:1px solid #9baebe;border-radius:7px}input{flex:1;min-width:240px}button{background:#145a7a;color:white;border-color:#145a7a;cursor:pointer}button:disabled{opacity:.55;cursor:wait}.status{margin:16px 0 0;min-height:1.5em}.certificate{border:2px solid #d1a94f;background:linear-gradient(135deg,#fff,#fffdf5);padding:28px;border-radius:12px}.certificate[hidden],#printBtn[hidden]{display:none}.valid{color:#17663a;font-weight:700}.cert-id{overflow-wrap:anywhere;background:#f2f5f7;padding:10px;border-radius:6px}.facts{display:grid;grid-template-columns:140px 1fr;gap:10px;margin:22px 0}.facts dt{color:#526579}.facts dd{margin:0;font-weight:600}.privacy{font-size:.9rem;color:#526579;border-top:1px solid #dce3e8;padding-top:14px}.print-row{text-align:right;margin-top:12px}
+@media(max-width:520px){body{padding:12px 10px}header,section{padding:18px}.facts{grid-template-columns:1fr;gap:4px}.facts dd{margin-bottom:10px}}
+@media print{body{background:#fff;padding:0}.page{max-width:none}header,form,.status,.print-row{display:none!important}section{box-shadow:none;margin:0;padding:0}.certificate{display:block!important;border:2px solid #d1a94f;padding:36px;min-height:420px}}
+</style></head><body><main class="page">
+<header><h1>汽車電系雲端證書查驗</h1><p class="muted">輸入證書 ID，確認雲端簽章與教師核章紀錄。此頁只顯示遮罩後的班級／座號、學期和單元，不顯示姓名或成績。</p>
+<form id="verifyForm"><input id="certId" aria-label="證書 ID" placeholder="證書 ID，例如 NTC-…" autocomplete="off" autocapitalize="off" spellcheck="false" value="<?= certificateId ?>"><button id="verifyBtn" type="submit">查驗證書</button></form><p class="status" id="status" role="status" aria-live="polite">請輸入證書 ID 查驗。</p></header>
+<section id="certificate" class="certificate" hidden aria-live="polite"><div class="valid">✓ 雲端簽章有效</div><h2>汽車電系學習紀錄證書</h2><p class="muted">此證書所列紀錄已由教師核章。</p><dl class="facts"><dt>證書 ID</dt><dd id="outId" class="cert-id"></dd><dt>班級代號</dt><dd id="outClass"></dd><dt>座號</dt><dd id="outSeat"></dd><dt>學期</dt><dd id="outSemester"></dd><dt>已核章單元</dt><dd id="outUnits"></dd><dt>核發日期</dt><dd id="outDate"></dd></dl><p class="privacy">查驗資料由雲端簽章確認。證書頁不包含學生姓名、分數或教師帳號。</p><div class="print-row"><button id="printBtn" type="button" hidden>列印／另存 PDF</button></div></section>
+</main><script>
+'use strict';
+const $=id=>document.getElementById(id);
+if(!$('certId').value||$('certId').value.charAt(0)==='<'){try{$('certId').value=new URL(window.location.href).searchParams.get('id')||'';}catch(e){}}
+function showInvalid(){ $('certificate').hidden=true;$('printBtn').hidden=true;$('status').textContent='查無有效證書或簽章不符，請確認證書 ID。'; }
+$('verifyForm').addEventListener('submit',event=>{
+  event.preventDefault();const id=$('certId').value.trim();$('certificate').hidden=true;$('printBtn').hidden=true;
+  if(!id){$('status').textContent='請輸入證書 ID。';return;}
+  $('verifyBtn').disabled=true;$('status').textContent='查驗中…';
+  google.script.run.withFailureHandler(()=>{$('verifyBtn').disabled=false;$('status').textContent='目前無法完成查驗，請稍後再試。';})
+    .withSuccessHandler(result=>{
+      $('verifyBtn').disabled=false;
+      if(!result||result.valid!==true){showInvalid();return;}
+      const labels={horn:'喇叭',start:'起動'};
+      $('outId').textContent=result.certId||id;$('outClass').textContent=result.cls||'已遮罩';$('outSeat').textContent=result.seat||'已遮罩';
+      $('outSemester').textContent=result.semester||'';$('outUnits').textContent=(result.units||[]).map(unit=>labels[unit]||'').filter(Boolean).join('、')||'—';
+      const date=result.at?new Date(result.at):null;$('outDate').textContent=date&&!Number.isNaN(date.getTime())?date.toLocaleDateString('zh-TW'):'—';
+      $('certificate').hidden=false;$('printBtn').hidden=false;$('status').textContent='查驗通過。';
+    }).verifyStudentCertificate(id);
+});
+$('printBtn').addEventListener('click',()=>window.print());
+</script></body></html>

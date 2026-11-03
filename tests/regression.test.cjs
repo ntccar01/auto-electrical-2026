@@ -109,3 +109,18 @@ test('Start: backfeed voltages respect coil/motor resistance and disconnected gr
   const motor=startScenario({fault:['mot','Open']}).h;
   assert.ok(Math.abs(motor.run("CircuitEngine.getVoltageAtNode('mot_M',true,false)")-12)<1e-8);
 });
+
+for(const id of ['START-C-01','START-C-02','START-C-03'])test('Start C: '+id+' evidence gates, staged repair and final cranking',()=>{
+ const h=app('start');wire(h,START_WIRES);h.run(`window.__NTC_LAST_ITEM=START_BANK.getById('${id}');initRepairProgress(__NTC_LAST_ITEM);isAssessmentMode=true;`);
+ assert.equal(h.run('stageHtml().includes(faultLabel(__NTC_LAST_ITEM.faults[0]))'),false);
+ assert.equal(h.run('requestRepair(__NTC_LAST_ITEM.stages[0].repair,__NTC_LAST_ITEM.faults[0]).ok'),false);
+ h.run("igPos='ST';runSimulation()");assert.notEqual(h.ctx.document.getElementById('crankAmps').textContent,180);
+ // Motor must be diagnosed first in C-03; the other two orders are also exercised.
+ const stages=Array.from(h.ctx.START_BANK.getById(id).stages);if(id==='START-C-03')stages.reverse();
+ for(const stage of stages){
+  h.run(`igPos='OFF';runSimulation();constRule=repairEvidenceRules['${stage.fault}'];NTC_LOG.log('probe_measure',{red:constRule.pairs[0][0],black:constRule.pairs[0][1],mode:constRule.kind==='voltage'?'DCV':'Ω',ignition:'OFF',gear:'P',pressed:constRule.kind==='voltage',valid:true,reading:'1 .'});`);
+  assert.equal(h.run(`requestRepair('${stage.repair}','${stage.fault}').ok`),true);
+ }
+ assert.equal(h.run('repairProgress.finalConfirmed'),false);h.run("igPos='OFF';runSimulation();igPos='ST';runSimulation()");assert.equal(h.ctx.document.getElementById('crankAmps').textContent,180);assert.equal(h.run('repairProgress.finalConfirmed'),true);
+ const score=h.run('ASSESS.score({multi:true,configId:__NTC_LAST_ITEM.id,faultHits:2,evidenceStages:2,repairOk:2,repairMiss:0,finalConfirmed:true})');assert.equal(score.total,100);assert.equal(score.parts['用時'],undefined);
+});

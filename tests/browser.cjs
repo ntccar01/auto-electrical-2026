@@ -27,7 +27,7 @@ let browser;
   await page.goto(base+'/');assert.equal(await page.locator('a.unit-card').count(),2);
   console.log('PASS portal');
   await page.getByRole('link',{name:'📖 專案開發導覽（進度／歷程／連結）'}).click();
-  assert.equal(await page.locator('#features article').count(),7);assert.equal(await page.locator('#timeline .event').count(),8);
+  assert.equal(await page.locator('#features article').count(),7);assert.equal(await page.locator('#timeline .event').count(),await page.evaluate(()=>PROJECT_GUIDE.timeline.length));
   const guideLinks=await page.locator('a[href]').evaluateAll(nodes=>nodes.map(a=>a.getAttribute('href')).filter(h=>!h.startsWith('#')&&!h.startsWith('http')));
   for(const link of guideLinks){assert.equal((await context.request.get(base+'/'+link)).status(),200,link);}
   await page.locator('#studentUrl').fill('https://example.com/exec');await page.locator('#linkSettings button[type=submit]').click();assert.ok((await page.locator('#savedStatus').innerText()).includes('請使用'));
@@ -45,10 +45,65 @@ let browser;
     assert.equal(await page.locator('.wire').count(),wires.length);
     assert.equal(await page.evaluate(()=>ASSESS.checkWiring().score10),10);
     if(unit==='start') {
+      await page.evaluate(()=>{
+        probeState.red.jack='volts';probeState.black.jack='com';
+        probeContact.red='fuse_in';probeContact.black='fuse_out';setMode(4);
+      });
+      assert.equal(await page.locator('#meter-display').textContent(),'LIVE');
+      await page.locator('#meterSafety').waitFor({state:'visible'});
+      assert.equal(await page.evaluate(()=>NTC_LOG.count('unsafe_resistance')),1);
+      const wireCount=await page.locator('.wire').count();
+      await page.locator('#isolatePowerBtn').click();
+      assert.match(await page.locator('#batteryStatus').textContent(),/已拆離/);
+      assert.equal(await page.locator('.wire').count(),wireCount);
+      assert.equal(await page.locator('#meter-display').textContent(),'0.1');
+      assert.equal(await page.locator('#meterSafety').isVisible(),false);
+      await page.screenshot({path:path.join(output,'start-battery-disconnected.png'),fullPage:true});
+      await page.locator('#isolatePowerBtn').click();
+      assert.equal(await page.locator('#meter-display').textContent(),'LIVE');
+      await page.screenshot({path:path.join(output,'start-live-resistance-warning.png'),fullPage:true});
+      await page.evaluate(()=>setMode(0));
+      assert.equal(await page.locator('#igStBtn').isDisabled(),true);
+      await page.locator('#igOnBtn').click();
       const box=await page.locator('#igStBtn').boundingBox();
       await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
       assert.equal(await page.locator('#crankAmps').textContent(),'180');
+      assert.equal(await page.locator('.wire').nth(4).getAttribute('data-flow-direction'),'forward');
+      assert.equal(await page.locator('.wire').nth(4).evaluate(el=>getComputedStyle(el).animationDirection),'normal');
+      assert.equal(await page.locator('.wire').nth(7).getAttribute('data-flow-direction'),'forward');
+      assert.equal(await page.locator('#sol_pull').getAttribute('data-flow-direction'),'none');
+      await page.evaluate(()=>{
+        connections=connections.map(connection=>({...connection,start:connection.end,end:connection.start,points:[...connection.points].reverse()}));
+        renderWires();runSimulation();
+      });
+      assert.equal(await page.locator('.wire').nth(4).getAttribute('data-flow-direction'),'reverse');
+      assert.equal(await page.locator('.wire').nth(4).evaluate(el=>getComputedStyle(el).animationDirection),'reverse');
+      assert.equal(await page.locator('.wire').nth(7).getAttribute('data-flow-direction'),'reverse');
+      assert.equal(await page.locator('.wire').nth(6).getAttribute('data-flow-direction'),'reverse');
+      await page.screenshot({path:path.join(output,'start-flow-reversed-drawing.png'),fullPage:true});
+      await page.evaluate(()=>{faultState.bm='Fail';runSimulation();});
+      assert.equal(await page.locator('.wire').nth(4).getAttribute('data-flow-direction'),'none');
+      assert.equal(await page.locator('#sol_pull').getAttribute('data-flow-direction'),'forward');
+      await page.evaluate(()=>{
+        faultState.bm='Normal';
+        connections=connections.map(connection=>({...connection,start:connection.end,end:connection.start,points:[...connection.points].reverse()}));
+        renderWires();runSimulation();
+      });
+
+      assert.equal(await page.locator('#pinionGear').evaluate(el=>getComputedStyle(el).animationName),'motVibe');
+      assert.equal(await page.locator('#motSpin').getAttribute('visibility'),'visible');
       await page.mouse.up();assert.equal(await page.locator('#crankAmps').textContent(),'0');
+      assert.equal(await page.locator('#igPosText').textContent(),'IG');
+      assert.equal(await page.locator('#pinionGear').evaluate(el=>getComputedStyle(el).animationName),'none');
+      await page.evaluate(()=>{faultState.battB='Open';runSimulation();});
+      await page.mouse.down();
+      assert.match(await page.locator('#statusMsg').textContent(),/馬達未搖轉/);
+      assert.equal(await page.locator('#pinionGear').getAttribute('visibility'),'visible');
+      assert.equal(await page.locator('#pinionGear').evaluate(el=>getComputedStyle(el).animationName),'none');
+      assert.equal(await page.locator('#motSpin').getAttribute('visibility'),'hidden');
+      await page.screenshot({path:path.join(output,'start-engaged-not-cranking.png'),fullPage:true});
+      await page.mouse.up();
+      await page.evaluate(()=>{faultState.battB='Normal';runSimulation();});
     }
     await page.locator('#oemBtn').click();
     await page.locator('#oemTabDiagram img').waitFor({state:'visible'});
@@ -70,7 +125,17 @@ let browser;
     await page.locator('#inputClass').fill('TEST_A');await page.locator('#inputSeat').fill('1');
     await page.getByRole('button',{name:'開始考評'}).click();
     assert.equal(await page.locator('#faultPanel').isVisible(),false);
-    if(unit==='start')assert.equal(await page.locator('#repairBtn').isVisible(),false);
+    await page.locator('#oemBtn').click();
+    await page.locator('#oemTabDiagram img').waitFor({state:'visible'});
+    await page.locator('#oemFloat [data-tab=values]').click();
+    assert.match(await page.locator('#oemTabValues').textContent(),/教學.*參考值/);
+    if(unit==='start'){
+      const values=await page.locator('#oemTabValues').textContent();
+      assert.ok(values.includes('1.5 Ω') && values.includes('P／N') && values.includes('180 A'));
+    }
+    await page.screenshot({path:path.join(output,unit+'-exam-reference.png'),fullPage:true});
+    await page.locator('button[onclick="OEM.toggle(false)"]').click();
+    if(unit==='start'){assert.equal(await page.locator('#repairBtn').isVisible(),false);assert.equal(await page.locator('#benchBtn').isVisible(),false);}
     const sid=await page.evaluate(()=>NTC_LOG.session.id);
     await page.locator('#submitAnswerBtn').click();
     const fault=await page.evaluate(()=>window.__NTC_LAST_ITEM.faults[0]);
@@ -143,13 +208,74 @@ let browser;
   console.log('PASS cloud teacher and student certificate pages with local GAS mocks: issue, share link, masked verification and print view');
 
 
-  for(const id of ['START-C-01','START-C-02','START-C-03']) {
+  for(const [id,guided] of [['START-C-01',true],['START-C-01',false],['START-C-02',false],['START-C-03',false]]) {
     const c=await context.newPage();c.on('pageerror',e=>errors.push(e.message));
     await c.goto(base+'/units/start/');
     await c.evaluate(id=>{const item=START_BANK.getById(id);START_BANK.assignFault=()=>({configId:id,faultId:item.faults[0],item});},id);
-    await c.getByRole('button',{name:'📝 進入考評模式'}).click();await c.locator('#inputClass').fill('TEST_C');await c.locator('#inputSeat').fill('1');await c.locator('#inputLevel').selectOption('challenge');await c.getByRole('button',{name:'開始考評'}).click();
+    if(guided){
+      await c.getByRole('button',{name:'🔨 進入練習模式'}).click();
+      await c.locator('#guidedRepairBtn').click();
+      assert.match(await c.locator('#repairGuide').textContent(),/①/);
+      for(const width of [1440,390]){
+        await c.setViewportSize({width,height:1080});
+        const guideBox=await c.locator('#repairGuide').boundingBox();
+        const controlsBox=await c.locator('.start-controls').boundingBox();
+        assert.ok(guideBox.height>0);
+        assert.ok(guideBox.y+guideBox.height<=controlsBox.y);
+        assert.equal(await c.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+        await c.screenshot({path:path.join(output,'start-guided-layout-'+width+'.png'),fullPage:true});
+      }
+      await c.setViewportSize({width:1440,height:1080});
+
+    } else {
+      await c.getByRole('button',{name:'📝 進入考評模式'}).click();await c.locator('#inputClass').fill('TEST_C');await c.locator('#inputSeat').fill('1');await c.locator('#inputLevel').selectOption('challenge');await c.getByRole('button',{name:'開始考評'}).click();
+    }
     assert.equal(await c.locator('#repairBtn').isVisible(),true);
     for(const [a,b] of START_WIRES){await c.locator(`.conn-point[data-id="${a}"]`).click({force:true});await c.locator(`.conn-point[data-id="${b}"]`).click({force:true});}
+      if(id==='START-C-01'){
+        // Exercise the real meter recorder with fixed probes, then take fresh readings after repair.
+        await c.evaluate(()=>{probeState.red.jack='volts';probeState.black.jack='com';});
+        if(guided){
+          await c.evaluate(()=>{igPos='IG';probeContact.red='fuse_in';probeContact.black='bat_neg';setMode(2);});
+          await c.evaluate(()=>{probeContact.red='fuse_out';runSimulation();});
+          assert.match(await c.locator('#repairGuide').textContent(),/②/);
+        }
+        await c.evaluate(()=>{igPos='OFF';runSimulation();});
+        await c.locator('#isolatePowerBtn').click();
+        await c.evaluate(()=>{probeContact.red='fuse_in';probeContact.black='fuse_out';setMode(2);});
+        await c.evaluate(()=>setMode(4));
+        assert.equal(await c.locator('#meter-display').textContent(),'1 .');
+        if(guided) assert.match(await c.locator('#repairGuide').textContent(),/③/);
+        await c.locator('#repairBtn').click();
+        await c.locator('#repairDiagnosis').selectOption('ns_open');
+        await c.locator('input[name=rep][value=ns]').check();
+        await c.getByRole('button',{name:'確認更換',exact:true}).click();
+        assert.match(await c.locator('#repairMsg').textContent(),/上游供電/);
+        await c.locator('#repairDiagnosis').selectOption('fuse_open');
+        await c.locator('input[name=rep][value=fuse]').check();
+        await c.getByRole('button',{name:'確認更換',exact:true}).click();
+        assert.match(await c.locator('#repairMsg').textContent(),/維修成功/);
+        await c.locator('#repairDiagnosis').selectOption('ns_open');
+        await c.locator('input[name=rep][value=ns]').check();
+        await c.getByRole('button',{name:'確認更換',exact:true}).click();
+        assert.match(await c.locator('#repairMsg').textContent(),/重新比較/);
+        await c.locator('#cancelRepairBtn').click();
+        await c.locator('#isolatePowerBtn').click();
+        await c.evaluate(()=>{probeContact.red='ns_in';probeContact.black='bat_neg';setMode(2);});
+        await c.locator('#igOnBtn').click();
+        const start=await c.locator('#igStBtn').boundingBox();
+        await c.mouse.move(start.x+start.width/2,start.y+start.height/2);
+        await c.mouse.down();
+        assert.equal(await c.locator('#meter-display').textContent(),'12.00');
+        await c.evaluate(()=>{probeContact.red='ns_out';runSimulation();});
+        assert.equal(await c.locator('#meter-display').textContent(),'0.00');
+        await c.mouse.up();
+        await c.locator('#repairBtn').click();
+        await c.locator('#repairDiagnosis').selectOption('ns_open');
+        await c.locator('input[name=rep][value=ns]').check();
+        await c.getByRole('button',{name:'確認更換',exact:true}).click();
+        assert.match(await c.locator('#repairMsg').textContent(),/維修成功/);
+      } else {
     await c.locator('#repairBtn').click();assert.ok(!(await c.locator('#repairStages').innerText()).includes('保險絲斷路'));
     const stages=await c.evaluate(()=>__NTC_LAST_ITEM.stages);if(id==='START-C-03')stages.reverse();
     for(const stage of stages){
@@ -159,10 +285,234 @@ let browser;
       await c.evaluate(fault=>{const rule=repairEvidenceRules[fault],pair=rule.pairs[0];igPos=rule.kind==='voltage'?'ST':'OFF';runSimulation();NTC_LOG.log('probe_measure',{red:pair[0],black:pair[1],mode:rule.kind==='voltage'?'DCV':'Ω',ignition:igPos,gear:gearPos,pressed:igPos==='ST',valid:true,reading:String(rule.kind==='voltage'?CircuitEngine.getVoltageAtNode(pair[0],true,window.__bmMech)-CircuitEngine.getVoltageAtNode(pair[1],true,window.__bmMech):CircuitEngine.getResistance(pair[0],pair[1]))});},stage.fault);
       await c.getByRole('button',{name:'確認更換',exact:true}).click();assert.ok((await c.locator('#repairMsg').innerText()).includes('維修成功'));
     }
-    await c.locator('#cancelRepairBtn').click();await c.locator('#igOffBtn').click();const box=await c.locator('#igStBtn').boundingBox();await c.mouse.move(box.x+box.width/2,box.y+box.height/2);await c.mouse.down();assert.equal(await c.locator('#crankAmps').innerText(),'180');await c.mouse.up();
+    }
+    await c.locator('#cancelRepairBtn').click();await c.locator('#igOffBtn').click();await c.locator('#igOnBtn').click();const box=await c.locator('#igStBtn').boundingBox();await c.mouse.move(box.x+box.width/2,box.y+box.height/2);await c.mouse.down();assert.equal(await c.locator('#crankAmps').innerText(),'180');await c.mouse.up();
+    if(guided){assert.match(await c.locator('#repairGuide').textContent(),/完成引導查修/);await c.close();continue;}
     await c.locator('#submitAnswerBtn').click();await c.locator('#confirmSubmitBtn').click();assert.ok((await c.locator('#resultTitle').innerText()).includes('診斷正確'));assert.ok((await c.locator('#resultDetails').innerText()).includes('100 分'));await c.screenshot({path:path.join(output,id+'.png'),fullPage:true});await c.close();
   }
   console.log('PASS start C three challenge cases: evidence gate, staged repair, restored cranking and 100-point scoring');
+
+
+  for(const id of ['HORN-C-01','HORN-C-02','HORN-C-03','HORN-C-04']){
+    const horn=await context.newPage();horn.on('pageerror',e=>errors.push(e.message));
+    await horn.goto(base+'/units/horn/');
+    await horn.evaluate(id=>{
+      const item=HORN_BANK.getById(id);
+      HORN_BANK.assignFault=()=>({configId:id,faultId:item.faults[0],item});
+    },id);
+    await horn.getByRole('button',{name:'📝 進入考評模式'}).click();
+    await horn.locator('#inputClass').fill('TEST_HORN');await horn.locator('#inputSeat').fill('1');
+    await horn.locator('#inputPaper').selectOption('A');
+    await horn.locator('#inputLevel').selectOption('challenge');
+    await horn.getByRole('button',{name:'開始考評'}).click();
+    for(const [a,b] of HORN_WIRES){
+      await horn.locator('.conn-point[data-id="'+a+'"]').click({force:true});
+      await horn.locator('.conn-point[data-id="'+b+'"]').click({force:true});
+    }
+    const faultsSet=await horn.evaluate(()=>__NTC_LAST_ITEM.faults.every(fault=>{
+      const [field,value]=FAULT_PICK_MAP[fault];return faultState[field]===value;
+    }));
+    assert.equal(faultsSet,true);
+    async function checkHornButton(upper,lower){
+      await horn.locator('#btn-hitbox').scrollIntoViewIfNeeded();
+      const box=await horn.locator('#btn-hitbox').boundingBox();
+      await horn.mouse.move(box.x+box.width/2,box.y+box.height/2);await horn.mouse.down();
+      assert.equal(await horn.locator('#horn1').evaluate(el=>el.classList.contains('honking')),upper);
+      assert.equal(await horn.locator('#horn2').evaluate(el=>el.classList.contains('honking')),lower);
+      await horn.mouse.up();
+    }
+    await checkHornButton(false,false);
+    const evidence=await horn.evaluate(()=>__NTC_LAST_ITEM.evidencePoints.slice(0,2));
+    await horn.locator('#submitAnswerBtn').click();
+    await horn.locator('input[name=mdiag][value=normal]').check();
+    for(const node of evidence) await horn.locator('input[name=mevd][value="'+node+'"]').check();
+    assert.equal(await horn.evaluate(()=>evaluateMulti().pass),false);
+    await horn.locator('#cancelSubmitBtn').click();
+    const stages=await horn.evaluate(()=>__NTC_LAST_ITEM.stages);
+    if(id==='HORN-C-04') stages.reverse();
+    for(const [index,stage] of stages.entries()){
+      await horn.locator('#repairBtn').click();
+      await horn.locator('input[name=rep][value="'+stage.repair+'"]').check();
+      await horn.getByRole('button',{name:'確認更換',exact:true}).click();
+      assert.match(await horn.locator('#repairMsg').textContent(),/維修成功/);
+      await horn.locator('#cancelRepairBtn').click();
+      const upper=index===stages.length-1||id==='HORN-C-01';
+      const lower=index===stages.length-1||id==='HORN-C-03'||id==='HORN-C-04';
+      await checkHornButton(upper,lower);
+    }
+    await horn.locator('#submitAnswerBtn').click();
+    for(const node of evidence) await horn.locator('input[name=mevd][value="'+node+'"]').check();
+    await horn.locator('#confirmSubmitBtn').click();
+    assert.match(await horn.locator('#resultTitle').textContent(),/診斷正確/);
+    const last=await horn.evaluate(()=>NTC_LOG.history().at(-1));
+    assert.equal(last.summary.pass,true);assert.equal(last.faultConfigId,id);
+    await horn.close();
+  }
+  console.log('PASS horn A-paper C four cases: login faults, staged faults, repair restoration and correct submission');
+
+  const host=await context.newPage();
+  await host.goto(base+'/units/start/');
+  await host.getByRole('button',{name:'🔨 進入練習模式'}).click();
+  host.once('dialog',dialog=>{assert.match(dialog.message(),/拆離電瓶負極/);dialog.accept();});
+  await host.locator('#benchBtn').click();
+  await host.locator('#isolatePowerBtn').click();
+  const original=await host.evaluate(()=>JSON.stringify({faultState,connections,repairPowerIsolated}));
+  await host.evaluate(()=>{faultState.bm='Fail';});
+  const popup=host.waitForEvent('popup');
+  await host.locator('#benchBtn').click();
+  const bench=await popup;bench.on('pageerror',e=>errors.push(e.message));await bench.waitForLoadState();
+  assert.equal(await bench.locator('#scenario').inputValue(),'fail');
+  await bench.locator('#recordClass').fill('TEST_BENCH');await bench.locator('#recordSeat').fill('7');
+  await bench.locator('#mode').selectOption('resistance');
+  for(const scenario of ['normal','fail']){
+    await bench.locator('#scenario').selectOption(scenario);
+    assert.equal(await bench.locator('#reading').textContent(),'OL');
+    const b=await bench.locator('#manual').boundingBox();
+    await bench.mouse.move(b.x+b.width/2,b.y+b.height/2);await bench.mouse.down();
+    assert.equal(await bench.locator('#reading').textContent(),scenario==='normal'?'0.01 Ω':'OL');
+    await bench.mouse.up();
+    assert.match(await bench.locator('#records li').last().textContent(),/手動推動/);
+  }
+  await bench.locator('#power').click();
+  assert.equal(await bench.locator('#reading').textContent(),'LIVE');
+  assert.equal(await bench.locator('#record').isDisabled(),true);
+  await bench.locator('#mode').selectOption('voltage');
+  for(const [scenario,reading] of [['normal','0.08 V'],['fail','6.86 V']]){
+    await bench.locator('#scenario').selectOption(scenario);
+    const b=await bench.locator('#coil').boundingBox();
+    await bench.mouse.move(b.x+b.width/2,b.y+b.height/2);await bench.mouse.down();
+    assert.equal(await bench.locator('#reading').textContent(),reading);
+    await bench.mouse.up();assert.match(await bench.locator('#motion').textContent(),/回位/);
+  }
+
+  await bench.locator('#scenario').selectOption('hold_open');
+  const holdButton=await bench.locator('#coil').boundingBox();
+  await bench.mouse.move(holdButton.x+holdButton.width/2,holdButton.y+holdButton.height/2);
+  await bench.mouse.down();
+  await bench.waitForFunction(()=>document.getElementById('motion').dataset.engaged==='true');
+  assert.equal(await bench.locator('#reading').textContent(),'0.08 V');
+  const engagedGear=await bench.locator('#pinion').getAttribute('transform');
+  await bench.waitForFunction(()=>document.getElementById('motion').dataset.engaged==='false');
+  assert.equal(await bench.locator('#reading').textContent(),'6.86 V');
+  assert.notEqual(await bench.locator('#pinion').getAttribute('transform'),engagedGear);
+  await bench.waitForFunction(()=>document.getElementById('motion').dataset.engaged==='true');
+  await bench.screenshot({path:path.join(output,'start-bench-hold-failure.png'),fullPage:true});
+  await bench.mouse.up();
+  assert.equal(await bench.evaluate(()=>chatterTimer),null);
+  assert.match(await bench.locator('#motion').textContent(),/回位/);
+  await bench.locator('#coil').focus();await bench.keyboard.down('Space');
+  await bench.evaluate(()=>window.dispatchEvent(new Event('pointercancel')));
+  await bench.keyboard.up('Space');
+  assert.equal(await bench.evaluate(()=>chatterTimer),null);
+  await bench.locator('#power').click();
+  await bench.locator('#mode').selectOption('resistance');
+  await bench.locator('#red').selectOption('ST');
+  await bench.locator('#black').selectOption('G');
+  assert.equal(await bench.locator('#reading').textContent(),'OL');
+  await bench.locator('#black').selectOption('M');
+  assert.equal(await bench.locator('#reading').textContent(),'2.0 Ω');
+  await bench.locator('#red').selectOption('B');
+  const manualHold=await bench.locator('#manual').boundingBox();
+  await bench.mouse.move(manualHold.x+manualHold.width/2,manualHold.y+manualHold.height/2);await bench.mouse.down();
+  assert.equal(await bench.locator('#reading').textContent(),'0.01 Ω');
+  await bench.mouse.up();
+  await bench.locator('#scenario').selectOption('normal');
+  await bench.locator('#red').selectOption('ST');await bench.locator('#black').selectOption('G');
+  assert.equal(await bench.locator('#reading').textContent(),'30.0 Ω');
+
+  await bench.locator('#scenario').selectOption('high_resistance');
+  await bench.locator('#red').selectOption('B');await bench.locator('#black').selectOption('M');
+  assert.equal(await bench.locator('#reading').textContent(),'OL');
+  const highManual=await bench.locator('#manual').boundingBox();
+  await bench.mouse.move(highManual.x+highManual.width/2,highManual.y+highManual.height/2);await bench.mouse.down();
+  assert.equal(await bench.locator('#reading').textContent(),'3.0 Ω');
+  await bench.mouse.up();
+  await bench.locator('#power').click();
+  assert.equal(await bench.locator('#reading').textContent(),'LIVE');
+  await bench.locator('#mode').selectOption('voltage');
+  const highCoil=await bench.locator('#coil').boundingBox();
+  await bench.mouse.move(highCoil.x+highCoil.width/2,highCoil.y+highCoil.height/2);await bench.mouse.down();
+  assert.equal(await bench.locator('#reading').textContent(),'5.33 V');
+  assert.equal(await bench.locator('#loadCurrent').textContent(),'4.44 A');
+  assert.equal(await bench.locator('#contactCurrent').textContent(),'1.78 A');
+  assert.match(await bench.locator('#loadStatus').textContent(),/慢轉/);
+  assert.equal(await bench.locator('#motorRotor').evaluate(el=>getComputedStyle(el).animationName),'benchMotorRotation');
+  const slowPeriod=await bench.locator('#motorRotor').evaluate(el=>parseFloat(getComputedStyle(el).animationDuration));
+  const circuit=await bench.evaluate(()=>{
+    const nodes=benchVoltages(),drop=nodes.B-nodes.M;
+    return {drop,loadVoltage:nodes.M,contactCurrent:drop/contactResistance(),pullCurrent:(nodes.ST-nodes.M)/pullResistance,loadCurrent:nodes.M/loadResistance};
+  });
+  assert.ok(Math.abs(circuit.drop+circuit.loadVoltage-12)<1e-9);
+  assert.ok(Math.abs(circuit.contactCurrent+circuit.pullCurrent-circuit.loadCurrent)<1e-9);
+  assert.ok(Math.abs(circuit.drop/circuit.contactCurrent-3)<1e-9);
+  await bench.screenshot({path:path.join(output,'start-bench-high-resistance.png'),fullPage:true});
+  await bench.mouse.up();
+  assert.match(await bench.locator('#records li').last().textContent(),/5.33 V/);
+  assert.equal(await bench.locator('#motorRotor').evaluate(el=>getComputedStyle(el).animationName),'none');
+  await bench.locator('#scenario').selectOption('normal');
+  await bench.mouse.move(highCoil.x+highCoil.width/2,highCoil.y+highCoil.height/2);await bench.mouse.down();
+  assert.equal(await bench.locator('#reading').textContent(),'0.08 V');
+  assert.equal(await bench.locator('#loadCurrent').textContent(),'7.95 A');
+  assert.ok(await bench.locator('#motorRotor').evaluate(el=>parseFloat(getComputedStyle(el).animationDuration))<slowPeriod);
+  await bench.mouse.up();
+  await bench.locator('#scenario').selectOption('high_resistance');
+
+  const recordedBefore=await bench.locator('#records li').count();
+  const firstEntry=await bench.evaluate(()=>({...measurements[0]}));
+  await bench.locator('#recordClass').fill('TEST_OTHER');
+  await bench.locator('#recordSeat').fill('8');
+  await bench.locator('#record').click();
+  assert.equal(await bench.evaluate(()=>measurements[0].classCode),'TEST_BENCH');
+  assert.equal(await bench.evaluate(()=>measurements.at(-1).classCode),'TEST_OTHER');
+  assert.equal(await bench.locator('#records li').count(),recordedBefore+1);
+  bench.once('dialog',dialog=>{assert.match(dialog.message(),/下載記錄 CSV/);dialog.dismiss();});
+  await bench.locator('#clearRecords').click();
+  assert.equal(await bench.locator('#records li').count(),recordedBefore+1);
+  const csvDownload=bench.waitForEvent('download');
+  await bench.locator('#downloadRecords').click();
+  const benchDownload=await csvDownload;
+  assert.match(benchDownload.suggestedFilename(),/^start-bench-records-.*\.csv$/);
+  const benchCsvPath=path.join(output,'start-bench-records.csv');
+  await benchDownload.saveAs(benchCsvPath);
+  const benchCsv=fs.readFileSync(benchCsvPath,'utf8');
+  assert.equal(benchCsv.charCodeAt(0),0xfeff);
+  assert.ok(benchCsv.includes('"班級代號","座號"'));
+  assert.ok(benchCsv.includes('"TEST_BENCH","7"'));
+  assert.ok(benchCsv.includes('"TEST_OTHER","8"'));
+  assert.ok(benchCsv.includes('"Asia/Taipei"'));
+  assert.ok(benchCsv.includes(firstEntry.timestamp));
+  assert.ok(benchCsv.includes(firstEntry.localTime));
+  assert.ok(benchCsv.includes('START-BENCH-V4'));
+  assert.ok(benchCsv.includes('5.33 V')&&benchCsv.includes('3.0 Ω'));
+  assert.equal(benchCsv.replace(/^\uFEFF/,'').trimEnd().split('\r\n').length,recordedBefore+2);
+  assert.equal(await bench.evaluate(()=>csvCell('=1+1')),'"\'=1+1"');
+  const downloadCount=await bench.locator('#records li').count();
+  bench.once('dialog',dialog=>{assert.match(dialog.message(),/無法復原/);dialog.accept();});
+  await bench.locator('#clearRecords').click();
+  assert.equal(await bench.locator('#records li').count(),0);
+  assert.equal(await bench.evaluate(()=>measurements.length),0);
+  assert.equal(await bench.locator('#downloadRecords').isDisabled(),true);
+  assert.equal(await bench.locator('#clearRecords').isDisabled(),true);
+  await bench.locator('#record').click();
+  assert.equal(await bench.locator('#records li').count(),1);
+  assert.ok(await bench.evaluate(()=>measurements[0].number)>downloadCount);
+  assert.equal(await bench.locator('#downloadRecords').isDisabled(),false);
+  await bench.screenshot({path:path.join(output,'start-bench-desktop.png'),fullPage:true});
+  await bench.setViewportSize({width:390,height:844});
+  assert.equal(await bench.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await bench.screenshot({path:path.join(output,'start-bench-mobile.png'),fullPage:true});await bench.close();
+  await host.evaluate(()=>{faultState.bm='Normal';});
+  assert.equal(await host.evaluate(()=>JSON.stringify({faultState,connections,repairPowerIsolated})),original);
+  await host.close();
+  const preset=await context.newPage();
+  for(const scenario of ['hold_open','high_resistance']){
+    await preset.goto(base+'/units/start/bench.html?contact='+scenario);
+    assert.equal(await preset.locator('#scenario').inputValue(),scenario);
+  }
+  await preset.close();
+
+  console.log('PASS practice bench: isolation, mechanical contact, powered voltage drop, safety, mobile and host state');
+
   // Touch context: tablet layout and actual Pointer Events via touchscreen taps.
   const touch=await browser.newContext({viewport:{width:1024,height:1366},hasTouch:true,isMobile:true});const tp=await touch.newPage();
   tp.on('pageerror',e=>errors.push(e.message));await tp.goto(base+'/units/start/');await tp.getByRole('button',{name:'🔨 進入練習模式'}).tap();

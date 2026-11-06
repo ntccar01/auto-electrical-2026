@@ -1,5 +1,5 @@
 /* OEM 浮動線路圖（P1）
- * 可拖曳・縮放・最小化・線路圖/正常值分頁。考評模式隱藏（P2 接難度連動）。
+ * 可拖曳・縮放・最小化・線路圖/正常值分頁。練習與考評皆可查閱。
  */
 window.OEM = (function () {
   var W = 380, MINW = 280, MAXW = 800;
@@ -25,7 +25,7 @@ window.OEM = (function () {
   }
   function setExam(isExam) {
     var b = el('oemBtn');
-    if (b) b.classList.toggle('hidden', isExam);
+    if (b) b.classList.remove('hidden');
     if (isExam) toggle(false);
   }
 

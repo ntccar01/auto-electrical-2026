@@ -119,8 +119,81 @@ for(const id of ['START-C-01','START-C-02','START-C-03'])test('Start C: '+id+' e
  const stages=Array.from(h.ctx.START_BANK.getById(id).stages);if(id==='START-C-03')stages.reverse();
  for(const stage of stages){
   h.run(`igPos='OFF';runSimulation();constRule=repairEvidenceRules['${stage.fault}'];NTC_LOG.log('probe_measure',{red:constRule.pairs[0][0],black:constRule.pairs[0][1],mode:constRule.kind==='voltage'?'DCV':'Ω',ignition:'OFF',gear:'P',pressed:constRule.kind==='voltage',valid:true,reading:'1 .'});`);
+  if(id==='START-C-01' && stage.fault==='fuse_open'){
+   h.run("NTC_LOG.log('probe_measure',{red:'fuse_in',black:'fuse_out',mode:'20V',isolated:true,valid:true,reading:'0.00'});NTC_LOG.log('probe_measure',{red:'fuse_in',black:'fuse_out',mode:'200Ω',ignition:'OFF',isolated:true,valid:true,reading:'1 .'})");
+  }
+  if(id==='START-C-01' && stage.fault==='ns_open'){
+   h.run("for(const [red,reading] of [['ns_in','12.00'],['ns_out','0.00']]) NTC_LOG.log('probe_measure',{red,black:'bat_neg',mode:'20V',gear:'P',pressed:true,valid:true,reading})");
+  }
   assert.equal(h.run(`requestRepair('${stage.repair}','${stage.fault}').ok`),true);
  }
  assert.equal(h.run('repairProgress.finalConfirmed'),false);h.run("igPos='OFF';runSimulation();igPos='ST';runSimulation()");assert.equal(h.ctx.document.getElementById('crankAmps').textContent,180);assert.equal(h.run('repairProgress.finalConfirmed'),true);
  const score=h.run('ASSESS.score({multi:true,configId:__NTC_LAST_ITEM.id,faultHits:2,evidenceStages:2,repairOk:2,repairMiss:0,finalConfirmed:true})');assert.equal(score.total,100);assert.equal(score.parts['用時'],undefined);
 });
+
+test('Start safety: OFF isolates control branch, battery disconnect isolates return, live resistance is blocked',()=>{
+ const h=app('start');wire(h,START_WIRES);
+ h.run("igPos='OFF';probeState.red.jack='volts';probeState.black.jack='com';probeContact.red='fuse_in';probeContact.black='fuse_out';setMode(4)");
+ assert.match(h.ctx.document.getElementById('meterSafety').textContent,/帶電/);
+ assert.equal(h.ctx.document.getElementById('meter-display').textContent,'LIVE');
+ assert.equal(h.ctx.NTC_LOG.count('probe_measure'),0);
+ assert.equal(h.ctx.NTC_LOG.count('unsafe_resistance'),1);
+ h.run('updateMultimeterReading()');assert.equal(h.ctx.NTC_LOG.count('unsafe_resistance'),1);
+ h.run("probeContact.red='ns_in';probeContact.black='ns_out';updateMultimeterReading()");
+ assert.equal(h.ctx.document.getElementById('meterSafety').textContent,'');
+ h.run("igPos='ST';runSimulation()");
+ assert.match(h.ctx.document.getElementById('meterSafety').textContent,/帶電/);
+ const wireCount=h.run('connections.length');
+ h.run('toggleRepairPower()');
+ assert.equal(h.run('connections.length'),wireCount);
+ assert.equal(h.run("CircuitEngine.isConnected('mot_chassis','bat_neg',CircuitEngine.buildGraph(false,false))"),false);
+ assert.equal(h.run("CircuitEngine.isConnected('mot_chassis','sol_chassis',CircuitEngine.buildGraph(false,false))"),true);
+ h.run("probeContact.red='fuse_in';probeContact.black='fuse_out';updateMultimeterReading()");
+ assert.equal(h.ctx.document.getElementById('meterSafety').textContent,'');
+ assert.equal(h.ctx.document.getElementById('meter-display').textContent,'0.1');
+ h.run("probeContact.red='bat_pos';probeContact.black='bat_neg';updateMultimeterReading()");
+ assert.equal(h.ctx.document.getElementById('meter-display').textContent,'LIVE');
+ h.run('setMode(2)');
+ assert.equal(h.ctx.document.getElementById('meter-display').textContent,'12.00');
+ h.run("igPos='ST';runSimulation()");
+ assert.equal(h.ctx.document.getElementById('crankAmps').textContent,0);
+ h.run("toggleRepairPower();igPos='ST';runSimulation()");
+ assert.equal(h.ctx.document.getElementById('crankAmps').textContent,180);
+});
+
+test('Start flow: direction follows supply and ground for either drawing order, without changing meter voltages',()=>{
+ for(const reversed of [false,true]){
+  const h=app('start');
+  wire(h,reversed?START_WIRES.map(([a,b])=>[b,a]):START_WIRES);
+  h.run("igPos='ST';runSimulation()");
+  assert.equal(h.ctx.document.getElementById('crankAmps').textContent,180);
+  const voltage=node=>h.run("CircuitEngine.getVoltageAtNode('"+node+"',true,true,0.0001)");
+  assert.ok(voltage('fuse_out')>voltage('sol_B'));
+  assert.ok(voltage('mot_gnd')>voltage('mot_chassis'));
+  assert.ok(voltage('sol_G')>voltage('sol_chassis'));
+  assert.equal(h.run("CircuitEngine.getVoltageAtNode('sol_B',true,true)"),12);
+  assert.equal(h.run("CircuitEngine.getVoltageAtNode('mot_M',true,true)"),12);
+  h.run("faultState.bm='Fail';runSimulation()");
+  const backfeed=h.run("CircuitEngine.getVoltageAtNode('sol_M',true,__bmMech)");
+  assert.ok(Math.abs(backfeed-12*1.5/3.5)<1e-9);
+ }
+});
+
+for(const id of ['HORN-C-01','HORN-C-02','HORN-C-03','HORN-C-04']){
+ test('Horn C: '+id+' faults coexist, staged repairs preserve remaining faults and practice resets',()=>{
+  const h=app('horn');wire(h,HORN_WIRES);
+  h.run("isAssessmentMode=true;window.__NTC_LAST_ITEM=HORN_BANK.getById('"+id+"');initRepairProgress(__NTC_LAST_ITEM)");
+  const stages=Array.from(h.ctx.HORN_BANK.getById(id).stages);
+  if(id==='HORN-C-04') stages.reverse();
+  for(const [index,stage] of stages.entries()){
+   for(const remaining of stages.slice(index)){
+    assert.equal(h.run("faultState[FAULT_PICK_MAP['"+remaining.fault+"'][0]]"),h.run("FAULT_PICK_MAP['"+remaining.fault+"'][1]"));
+   }
+   assert.equal(h.run("requestRepair('"+stage.repair+"').ok"),true);
+  }
+  assert.equal(h.run("Object.values(faultState).every(value=>value==='Normal')"),true);
+  h.run("isButtonPressed=false;faultState.horn1='Open';choosePracticeMode()");
+  assert.equal(h.run('repairProgress'),null);
+  assert.equal(h.run("Object.values(faultState).every(value=>value==='Normal')"),true);
+ });
+}

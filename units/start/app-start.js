@@ -19,10 +19,19 @@
         let studentInfo = { class: '', seat: '' };
         let isAssessmentMode = false;
         let lastResultData = null;
+        let guidedRepair = false;
+        let repairPowerIsolated = false;
+        let lastProbeSample = '';
 
         function choosePracticeMode() {
             isAssessmentMode = false;
-            repairProgress=null;
+            guidedRepair = false;
+            repairPowerIsolated = false;
+            repairProgress = null;
+            igPos = igLatch = 'OFF';
+            stHolding = false;
+            setModeUI(false);
+            syncRepairPowerButton();
             faultState=freshFaultState();
             currentActiveFault = 'normal';
             document.getElementById('modeDisplay').textContent = "練習模式";
@@ -37,6 +46,7 @@
             document.getElementById('toPracticeBtn').classList.add('hidden');
             document.getElementById('loginModal').classList.add('hidden');
             if (window.NTC_LOG) NTC_LOG.setSession({ mode: 'practice', unit: 'start' });
+            syncIgUI();
             runSimulation();
         }
 
@@ -52,6 +62,10 @@
 
         function switchModeToExam() {
             if(confirm("確定要切換至考評模式嗎？這將清除目前的連線。")) {
+                guidedRepair = false;
+                repairPowerIsolated = false;
+                repairProgress = null;
+                syncRepairPowerButton();
                 setModeUI(true);
                 resetSimulation();
                 document.getElementById('loginModal').classList.remove('hidden');
@@ -69,6 +83,10 @@
 
         function setModeUI(isExam) {
             isAssessmentMode = isExam;
+            document.getElementById('guidedRepairBtn').classList.toggle('hidden', isExam);
+            document.getElementById('benchBtn').classList.toggle('hidden', isExam);
+            document.getElementById('repairGuide').classList.toggle('hidden', isExam || !guidedRepair);
+
             const faultPanel = document.getElementById('faultPanel');
             faultPanel.classList.remove('visible');
             // P0-hotfix：考評模式徹底隱藏教師故障面板並停用其下拉選單，
@@ -142,7 +160,13 @@
             document.getElementById('modeDisplay').textContent = "考評模式";
             document.getElementById('modeDisplay').className = "mode-indicator mode-exam";
             document.getElementById('studentDisplay').textContent = `考生：${studentInfo.class} (${studentInfo.seat})`;
+            lastProbeSample = '';
+            repairPowerIsolated = false;
+            igPos = igLatch = 'OFF';
+            stHolding = false;
+            syncIgUI();
             setModeUI(true);
+            syncRepairPowerButton();
             document.getElementById('loginModal').classList.add('hidden');
             
             runSimulation();
@@ -251,6 +275,53 @@
             currentActiveFault = '__multi__';
             repairProgress = { checkpoint: 0, finalConfirmed: false, configId: item.id, parallel: !!item.parallel, stages: item.stages.map(s => ({ fault: s.fault, repair: s.repair, done: false })) };
         }
+        function openComponentBench() {
+            if (isAssessmentMode) return;
+            if (!repairPowerIsolated) {
+                alert('請先切回 OFF，拆離電瓶負極，再拆下元件進行台架檢查。');
+                return;
+            }
+            const contact = faultState.solHold === 'Open' ? 'hold_open' : faultState.bm === 'Fail' ? 'fail' : 'normal';
+            window.open('./bench.html?contact=' + contact, '_blank', 'noopener');
+        }
+        function startGuidedRepair() {
+            if (guidedRepair) {
+                choosePracticeMode();
+                return;
+            }
+            initRepairProgress(START_BANK.getById('START-C-01'));
+            guidedRepair = true;
+            lastProbeSample = '';
+            NTC_LOG.clear();
+            NTC_LOG.setSession({ mode: 'practice', unit: 'start' });
+            document.getElementById('faultPanel').classList.remove('visible');
+            document.getElementById('faultBtn').classList.add('hidden');
+            document.getElementById('repairBtn').classList.remove('hidden');
+            document.getElementById('repairGuide').classList.remove('hidden');
+            syncRepairPowerButton();
+            runSimulation();
+        }
+
+        function syncRepairPowerButton() {
+            const button = document.getElementById('isolatePowerBtn');
+            button.textContent = repairPowerIsolated ? '接回電瓶負極' : '拆離電瓶負極';
+            document.getElementById('batteryStatus').textContent = repairPowerIsolated ? '電瓶負極：已拆離' : '電瓶負極：已接妥';
+            document.getElementById('guidedRepairBtn').textContent = guidedRepair ? '結束引導查修' : '引導查修練習';
+        }
+
+        function toggleRepairPower() {
+            repairPowerIsolated = !repairPowerIsolated;
+            NTC_LOG.log('battery_disconnect', { disconnected: repairPowerIsolated });
+            if (repairPowerIsolated) {
+                stHolding = false;
+                igLatch = 'OFF';
+                igPos = 'OFF';
+                syncIgUI();
+            }
+            syncRepairPowerButton();
+            runSimulation();
+        }
+
         function repairStageDoneCount() {
             if (!repairProgress) return 0;
             return repairProgress.stages.filter(s => s.done).length;
@@ -263,15 +334,26 @@
             if (!entry) return { ok: false, msg: '未知的維修項目。' };
             const openStages = repairProgress.stages.map((s, i) => ({ s, i })).filter(o => !o.s.done);
             if (!openStages.length) return { ok: false, msg: '所有階段皆已修復，請繳交診斷報告。' };
-            const candidate = openStages.find(o => o.s.fault === diagnosis);
+            const eligibleStages = repairProgress.parallel ? openStages : openStages.slice(0, 1);
+            const candidate = eligibleStages.find(o => o.s.fault === diagnosis);
+            const firstStagePending = !repairProgress.parallel && openStages.length > 1;
             const measured = repairMeasurements();
             const rule = repairEvidenceRules[diagnosis];
-            const supported = rule && measured.some(e => {
+            const standardEvidence = rule && measured.some(e => {
                 const d=e.data||{};
                 return d.valid===true && d.reading && d.red && d.black && (diagnosis!=='ns_open'||d.gear==='P'||d.gear==='N') && rule.pairs.some(pair => pair.includes(d.red)&&pair.includes(d.black)&&d.red!==d.black) &&
                     (rule.kind==='voltage' ? /V/.test(d.mode)&&d.pressed===true : /Ω|K/.test(d.mode)&&d.ignition==='OFF');
             });
-            if (!supported) return {ok:false,msg:'請先完成所選診斷的兩端有效量測：電壓須按住 ST；電阻須關閉點火。'};
+            if (repairProgress.configId === 'START-C-01') {
+                if (firstStagePending && !candidate) return { ok: false, msg: '請先確認上游供電，再診斷下游。' };
+                const confirmed = diagnosis === 'fuse_open' ? fuseConfirmed(measured) :
+                    diagnosis === 'ns_open' && voltagePattern(measured, 'ns_in', 'ns_out', true);
+                if (!confirmed) return { ok: false, msg: diagnosis === 'fuse_open' ?
+                    '請先關閉點火、拆離電瓶負極，以電壓檔確認保險絲兩端無電壓，再用 Ω 檔確認開路。' :
+                    '請恢復供電，在 P／N 檔按住 ST，以同一搭鐵點重新比較入端與出端電壓。' };
+            } else if (!standardEvidence) {
+                return { ok: false, msg: '請先完成所選診斷的兩端有效量測：電壓須按住 ST，電阻須關閉點火。' };
+            }
             const hit = candidate && entry.fixes.includes(diagnosis) ? candidate : null;
             if(window.NTC_LOG)NTC_LOG.log(hit?'repair_ok':'repair_miss',{repair:repairKey,diagnosis:diagnosis});
             if(!hit)return {ok:false,msg:'診斷或維修項目不符，已記錄一次試誤；請重新量測。'};
@@ -281,9 +363,10 @@
             repairProgress.finalConfirmed=false;
             repairProgress.awaitRelease=true;
             runSimulation();
-            repairProgress.checkpoint=NTC_LOG.exportData().events.length;
+            repairProgress.checkpoint = (NTC_LOG.exportData().events.at(-1)?.seq ?? 0) + 1;
+            renderRepairGuide();
             const left = repairProgress.stages.filter(s => !s.done).length;
-            return { ok: true, msg: '維修成功：' + entry.label + '完成，相關故障已排除。' + (left ? '還有 ' + left + ' 個階段，請繼續查修。' : '全部修復完成，請繳交診斷報告。') };
+            return { ok: true, msg: '維修成功：' + entry.label + '完成，相關故障已排除。' + (left ? '還有 ' + left + ' 個階段，請繼續查修。' : (guidedRepair ? '全部修復完成，請確認起動馬達搖轉。' : '全部修復完成，請確認搖轉後繳交診斷報告。')) };
         }
 
         document.getElementById('faultBtn').addEventListener('click', () => { document.getElementById('faultPanel').classList.toggle('visible'); });
@@ -333,13 +416,62 @@
             mot_open:{kind:'resistance',pairs:[['mot_M','mot_gnd']]},
             bm_fail:{kind:'voltage',pairs:[['sol_B','sol_M']]}
         };
-        function repairMeasurements(){return window.NTC_LOG?NTC_LOG.exportData().events.slice(repairProgress.checkpoint).filter(e=>e.type==='probe_measure'):[];}
+        function repairMeasurements() {
+            return NTC_LOG.exportData().events.filter(event => event.type === 'probe_measure' && event.seq >= repairProgress.checkpoint);
+        }
+
+        function voltagePattern(events, input, output, starting) {
+            const readings = new Map();
+            for (const { data } of events) {
+                if (!data.valid || data.isolated || !data.mode.endsWith('V')) continue;
+                if (starting && (!data.pressed || !['P', 'N'].includes(data.gear))) continue;
+                const node = data.black === 'bat_neg' ? data.red : data.red === 'bat_neg' ? data.black : null;
+                const value = Number(data.reading) * (data.black === 'bat_neg' ? 1 : -1);
+                if (node === input || node === output) readings.set(node, value);
+            }
+            return readings.get(input) >= 10 && Math.abs(readings.get(output)) <= 0.5;
+        }
+
+        function fuseConfirmed(events) {
+            return events.some(({ seq, data }) => data.valid && data.isolated && data.ignition === 'OFF' &&
+                /Ω|K|2M/.test(data.mode) && data.reading === '1 .' &&
+                ((data.red === 'fuse_in' && data.black === 'fuse_out') || (data.red === 'fuse_out' && data.black === 'fuse_in')) &&
+                events.some(previous => previous.seq < seq && previous.data.valid && previous.data.isolated &&
+                    previous.data.mode.endsWith('V') && Math.abs(Number(previous.data.reading)) <= 0.5 &&
+                    ((previous.data.red === 'fuse_in' && previous.data.black === 'fuse_out') ||
+                     (previous.data.red === 'fuse_out' && previous.data.black === 'fuse_in'))) &&
+                (!guidedRepair || voltagePattern(events.filter(event => event.seq < seq), 'fuse_in', 'fuse_out', false)));
+        }
+
+        function renderRepairGuide() {
+            if (!guidedRepair) return;
+            const done = repairStageDoneCount();
+            const events = repairMeasurements();
+            let instruction;
+            if (done === 0) {
+                if (!voltagePattern(events, 'fuse_in', 'fuse_out', false)) {
+                    instruction = '① 完成基本配線。用直流電壓檔，以電瓶負極為基準，分別量保險絲入端與出端。比較兩端是否都有電。';
+                } else if (!fuseConfirmed(events)) {
+                    instruction = '② 入端有電、出端無電。點火切到 OFF，拆離電瓶負極，先用電壓檔量保險絲兩端確認約 0V，再用 Ω 檔量保險絲兩端，確認元件是否開路。';
+                } else {
+                    instruction = '③ 電表顯示開路。到「申請維修」提出保險絲的診斷與更換項目。';
+                }
+            } else if (done === 1) {
+                instruction = voltagePattern(events, 'ns_in', 'ns_out', true) ?
+                    '⑤ 依空檔開關入端與出端的新讀值，申請第二次維修。' :
+                    '④ 保險絲已修復。接回電瓶負極，排到 P／N 並按住 ST，以電瓶負極為基準分別量空檔開關入端與出端。';
+            } else {
+                instruction = repairProgress.finalConfirmed ? '✓ 已確認起動馬達搖轉，完成引導查修。' :
+                    '⑥ 放開後重新按住 ST，確認起動馬達是否搖轉。';
+            }
+            document.getElementById('repairGuide').textContent = instruction;
+        }
 
         function openRepairModal() {
             if (!repairProgress) { alert('本次考評為單一故障，無需維修，直接繳交診斷報告即可。'); return; }
             document.getElementById('repairStages').innerHTML = stageHtml();
             const cat = window.START_BANK.REPAIR_CATALOG;
-            document.getElementById('repairList').innerHTML = '<label>量測後的診斷 <select id="repairDiagnosis"><option value="">請選擇</option>'+faultOptions.filter(f=>f.id!=='normal').map(f=>`<option value="${f.id}">${f.label}</option>`).join('')+'</select></label><p>先 OFF 量保險絲、空檔開關（P/N）、B 主線或馬達兩端電阻；B-M 接點量測需按住 ST 比較 B、M 電壓。</p>'+cat.map(c => `<div class="radio-item repair-item"><label><input type="radio" name="rep" value="${c.key}"> ${c.label}</label></div>`).join('') + `<button class="btn-primary" onclick="doRepair()">確認更換</button>`;
+            document.getElementById('repairList').innerHTML = '<label>量測後的診斷 <select id="repairDiagnosis"><option value="">請選擇</option>'+faultOptions.filter(f=>f.id!=='normal').map(f=>`<option value="${f.id}">${f.label}</option>`).join('')+'</select></label><p>提出能支持診斷的量測證據。電阻量測須 OFF；START-C-01 的電阻確認另須拆離電瓶負極。需要帶電檢查起動控制時，使用 P／N 與 ST。</p>'+cat.map(c => `<div class="radio-item repair-item"><label><input type="radio" name="rep" value="${c.key}"> ${c.label}</label></div>`).join('') + `<button class="btn-primary" onclick="doRepair()">確認更換</button>`;
             document.getElementById('repairMsg').textContent = '';
             document.getElementById('repairModal').classList.remove('hidden');
         }
@@ -457,10 +589,10 @@
                 }
                 return false;
             },
-            buildGraph: function(stActive, bmClosed) {
+            buildGraph: function(stActive, bmClosed, includeWires = true) {
                 let adj = {};
                 const addEdge = (u, v) => { if(!adj[u]) adj[u]=[]; if(!adj[v]) adj[v]=[]; adj[u].push(v); adj[v].push(u); };
-                connections.forEach(conn => { if (!isConnBroken(conn)) addEdge(conn.start, conn.end); });
+                if (includeWires) connections.forEach(conn => { if (!isConnBroken(conn) && !(repairPowerIsolated && [conn.start, conn.end].includes('bat_neg'))) addEdge(conn.start, conn.end); });
                 if (faultState.fuse === 'Normal') addEdge('fuse_in', 'fuse_out');
                 // 點火開關內部（圖4-2 二段三線式）：IG檔B-IG通；ST檔B-IG＋B-ST通
                 if (igPos === 'IG') addEdge('ig_B', 'ig_IG');
@@ -471,11 +603,12 @@
                 if (bmClosed && faultState.bm === 'Normal') addEdge('sol_B', 'sol_M');
                 // 馬達內部線圈（本體正常時 M-搭鐵內部相通，供吸入線圈搭鐵迴路判斷）
                 if (faultState.mot === 'Normal') addEdge('mot_M', 'mot_gnd');
-                for (let gi = 1; gi < GROUND_NET.length; gi++) addEdge(GROUND_NET[0], GROUND_NET[gi]);
+                const chassis = repairPowerIsolated ? GROUND_NET.slice(1) : GROUND_NET;
+                for (let gi = 1; gi < chassis.length; gi++) addEdge(chassis[0], chassis[gi]);
                 return adj;
             },
-            getVoltageAtNode: function(targetNode, stActive, bmClosed) {
-                const graph = this.buildGraph(stActive, bmClosed);
+            getVoltageAtNode: function(targetNode, stActive, bmClosed, wireResistance = 0) {
+                const graph = this.buildGraph(stActive, bmClosed, wireResistance === 0);
                 // 導通圖會把馬達當作吸入線圈的接地路徑；求電壓時改回有限電阻，
                 // 避免將線圈回送的 12V 視為所有端點都帶主電源電壓。
                 if (faultState.mot === 'Normal') {
@@ -485,7 +618,7 @@
                     }
                 }
                 const group = {}, groups = [];
-                const nodes = new Set(Object.keys(graph).concat(['bat_pos', 'bat_neg', 'sol_ST', 'sol_G', 'sol_M', 'mot_M', 'mot_gnd', targetNode]));
+                const nodes = new Set(Object.keys(graph).concat(connections.flatMap(connection => [connection.start, connection.end]), ['bat_pos', 'bat_neg', 'sol_ST', 'sol_G', 'sol_M', 'mot_M', 'mot_gnd', targetNode]));
                 nodes.forEach(node => {
                     if (group[node] !== undefined) return;
                     const id = groups.length, queue = [node]; groups.push(id); group[node] = id;
@@ -499,6 +632,13 @@
                 if (pos === neg) return 0;
                 const fixed = { [pos]: 12, [neg]: 0 }, edges = [];
                 const resistor = (a, b, r) => { if (group[a] !== group[b]) edges.push([group[a], group[b], 1 / r]); };
+                if (wireResistance > 0) {
+                    connections.forEach(connection => {
+                        if (!isConnBroken(connection) && !(repairPowerIsolated && [connection.start, connection.end].includes('bat_neg'))) {
+                            resistor(connection.start, connection.end, wireResistance);
+                        }
+                    });
+                }
                 if (faultState.solHold === 'Normal') resistor('sol_ST', 'sol_G', 30);
                 if (faultState.solPull === 'Normal') resistor('sol_ST', 'sol_M', 2);
                 if (faultState.mot === 'Normal') resistor('mot_M', 'mot_gnd', 1.5);
@@ -574,13 +714,15 @@
             document.getElementById('igOffBtn').classList.toggle('active', igPos === 'OFF');
             document.getElementById('igOnBtn').classList.toggle('active', igPos === 'IG');
             document.getElementById('igStBtn').classList.toggle('active', igPos === 'ST');
+            document.getElementById('igStBtn').disabled = igPos === 'OFF';
         }
         function syncGearUI() {
             document.getElementById('nsPosText').textContent = gearPos;
             document.querySelectorAll('.ctl-btn.gear').forEach(b => b.classList.toggle('active', b.getAttribute('data-g') === gearPos));
         }
         function setIgnition(pos) {
-            if (pos === 'ST') return;
+            if (pos !== 'OFF' && pos !== 'IG') return;
+            stHolding = false;
             igLatch = pos; igPos = pos;
             syncIgUI();
             if (window.NTC_LOG) NTC_LOG.log('ig_change', { pos: pos });
@@ -619,9 +761,15 @@
             } else if (vST > 10 && !bmMech && (holdGnd || pullGnd)) { amps = 8; } // 線圈有搭鐵才有吸入電流
 
             const pinion = document.getElementById('pinionGear');
-            if (pinion) pinion.setAttribute('visibility', bmMech ? 'visible' : 'hidden');
+            if (pinion) {
+                pinion.setAttribute('visibility', bmMech ? 'visible' : 'hidden');
+                pinion.classList.toggle('mot-vibe', crank);
+            }
             const spin = document.getElementById('motSpin');
-            if (spin) spin.setAttribute('visibility', crank ? 'visible' : 'hidden');
+            if (spin) {
+                spin.setAttribute('visibility', crank ? 'visible' : 'hidden');
+                spin.classList.toggle('mot-vibe', crank);
+            }
             const ampEl = document.getElementById('crankAmps');
             if (ampEl) ampEl.textContent = amps;
 
@@ -640,6 +788,7 @@
             updateFlowAnimation(bmMech);
             renderWireBreaks();
             updateMultimeterReading(bmMech);
+            renderRepairGuide();
         }
 
         // 配線段斷線視覺：在斷掉的學生配線上畫缺口徽章（練習模式才顯示，考評隱藏）
@@ -664,39 +813,46 @@
         }
 
         function updateFlowAnimation(bmClosed) {
-            document.querySelectorAll('.flowing').forEach(el => el.classList.remove('flowing'));
-            if (isAssessmentMode) return;
-            let graph = {};
-            const link = (u, v) => { if(!graph[u]) graph[u]=[]; if(!graph[v]) graph[v]=[]; graph[u].push(v); graph[v].push(u); };
-            connections.forEach(conn => { if (!isConnBroken(conn)) link(conn.start, conn.end); });
-            if (faultState.fuse === 'Normal') link('fuse_in', 'fuse_out');
-            if (igPos === 'IG') link('ig_B', 'ig_IG');
-            if (igPos === 'ST') { link('ig_B', 'ig_IG'); link('ig_B', 'ig_ST'); }
-            if ((gearPos === 'P' || gearPos === 'N') && faultState.ns === 'Normal') link('ns_in', 'ns_out');
-            if (bmClosed && faultState.bm === 'Normal') link('sol_B', 'sol_M');
-            if (faultState.solHold === 'Normal') link('sol_ST', 'sol_G');
-            if (faultState.solPull === 'Normal') link('sol_ST', 'sol_M');
-            if (faultState.mot === 'Normal') link('mot_M', 'mot_gnd');
-            for (let gi = 1; gi < GROUND_NET.length; gi++) link(GROUND_NET[0], GROUND_NET[gi]);
-            const isPowered = (node) => { let q=[node], v=new Set([node]); while(q.length) { let n=q.shift(); if(n==='bat_pos') return true; if(graph[n]) for(let nb of graph[n]) if(!v.has(nb)){v.add(nb);q.push(nb);} } return false; };
-            const isGrounded = (node) => { let q=[node], v=new Set([node]); while(q.length) { let n=q.shift(); if(n==='bat_neg') return true; if(graph[n]) for(let nb of graph[n]) if(!v.has(nb)){v.add(nb);q.push(nb);} } return false; };
-            const wires = document.querySelectorAll('.wire');
-            connections.forEach((conn, index) => {
-                let p1 = isPowered(conn.start) && isGrounded(conn.end);
-                let p2 = isPowered(conn.end) && isGrounded(conn.start);
-                let p3 = isPowered(conn.start) && isGrounded(conn.start);
-                let targetMotBroken = false;
-                if ((conn.end.includes('mot_') && faultState.mot === 'Open') || (conn.start.includes('mot_') && faultState.mot === 'Open')) targetMotBroken = true;
-                if (!targetMotBroken && (p1 || p2 || p3) && wires[index]) wires[index].classList.add('flowing');
+            document.querySelectorAll('.flowing, .flow-reverse').forEach(element => {
+                element.classList.remove('flowing', 'flow-reverse');
+                element.dataset.flowDirection = 'none';
             });
-            if (faultState.fuse === 'Normal') { if(isPowered('fuse_in') && isGrounded('fuse_out')) { const f = document.getElementById('path_fuse'); if (f) f.classList.add('flowing'); } }
-            if (isPowered('sol_ST')) {
-                if (faultState.solHold === 'Normal' && isGrounded('sol_G')) { const h = document.getElementById('sol_hold'); if (h) h.classList.add('flowing'); }
-                if (faultState.solPull === 'Normal' && isGrounded('sol_M')) { const p = document.getElementById('sol_pull'); if (p) p.classList.add('flowing'); }
-            }
-            if (bmClosed && isPowered('sol_B')) {
-                 const bl = document.getElementById('sol_blade'); if (bl) bl.classList.add('flowing');
-            }
+            if (isAssessmentMode || repairPowerIsolated) return;
+
+            // A tiny resistance resolves direction along ideal wires only for the animation.
+            // Meter readings and assessment keep the original ideal-wire model.
+            const wireResistance = 0.0001;
+            const voltages = new Map();
+            const voltage = node => {
+                if (!voltages.has(node)) {
+                    voltages.set(node, CircuitEngine.getVoltageAtNode(node, igPos === 'ST', bmClosed, wireResistance));
+                }
+                return voltages.get(node);
+            };
+            const wireCurrent = connection => isConnBroken(connection) ? 0 :
+                (voltage(connection.start) - voltage(connection.end)) / wireResistance;
+            const showFlow = (element, current) => {
+                if (!element) return;
+                const direction = Math.abs(current) < 0.01 ? 'none' : current > 0 ? 'forward' : 'reverse';
+                element.dataset.flowDirection = direction;
+                element.classList.toggle('flowing', direction !== 'none');
+                element.classList.toggle('flow-reverse', direction === 'reverse');
+            };
+            const wires = document.querySelectorAll('.wire');
+            connections.forEach((connection, index) => showFlow(wires[index], wireCurrent(connection)));
+            const incomingCurrent = node => connections.reduce((total, connection) => {
+                if (connection.end === node) return total + wireCurrent(connection);
+                if (connection.start === node) return total - wireCurrent(connection);
+                return total;
+            }, 0);
+            showFlow(document.getElementById('path_fuse'),
+                faultState.fuse === 'Normal' ? incomingCurrent('fuse_in') : 0);
+            showFlow(document.getElementById('sol_hold'),
+                faultState.solHold === 'Normal' ? (voltage('sol_ST') - voltage('sol_G')) / 30 : 0);
+            showFlow(document.getElementById('sol_pull'),
+                faultState.solPull === 'Normal' ? (voltage('sol_ST') - voltage('sol_M')) / 2 : 0);
+            showFlow(document.getElementById('sol_blade'),
+                bmClosed && faultState.bm === 'Normal' ? incomingCurrent('sol_B') : 0);
         }
 
         let probeContact = { red: null, black: null };
@@ -717,25 +873,74 @@
                     if (Math.sqrt(Math.pow(screenTipX - pX, 2) + Math.pow(screenTipY - pY, 2)) < 20) { probeContact[color] = p.getAttribute('data-id'); p.classList.add('probing'); }
                 });
             });
-            const _prR = probeContact._lr, _prB = probeContact._lb;
+
             runSimulation();
-            // 接觸組合改變才記一次量測事件（含當時檔位與讀值，避免拖曳洗版）
-            if (window.NTC_LOG && (probeContact.red !== _prR || probeContact.black !== _prB) && (probeContact.red || probeContact.black)) {
-                NTC_LOG.log('probe_measure', { red: probeContact.red, black: probeContact.black, mode: knobModes[currentModeIndex].label, reading: document.getElementById('meter-display').textContent, ignition:igPos, gear:gearPos, valid:probeState.red.jack==='volts'&&probeState.black.jack==='com', pressed: (typeof igPos !== 'undefined' && igPos === 'ST') });
-            }
-            probeContact._lr = probeContact.red; probeContact._lb = probeContact.black;
+
         }
-        function updateMultimeterReading(relayEnergized) {
+        function updateMultimeterReading() {
+            const warning = resistanceSafetyWarning();
+            const warningBox = document.getElementById('meterSafety');
+            warningBox.textContent = warning;
+            warningBox.classList.toggle('hidden', !warning);
+            renderMultimeterReading(warning);
+            if (!window.__ntcKnobReady || !window.NTC_LOG) return;
+            const mode = knobModes[currentModeIndex];
+            const sample = {
+                red: probeContact.red, black: probeContact.black, mode: mode.label,
+                reading: document.getElementById('meter-display').textContent,
+                ignition: igPos, gear: gearPos, pressed: igPos === 'ST', isolated: repairPowerIsolated,
+                valid: !warning && probeState.red.jack === 'volts' && probeState.black.jack === 'com'
+            };
+            const signature = JSON.stringify(sample);
+            if (signature === lastProbeSample) return;
+            lastProbeSample = signature;
+            if (warning) NTC_LOG.log('unsafe_resistance', sample);
+            if (sample.valid && sample.red && sample.black && ['dcv', 'res'].includes(mode.type)) {
+                NTC_LOG.log('probe_measure', sample);
+                renderRepairGuide();
+            }
+        }
+        function measurementSupplyGraph() {
+            const graph = CircuitEngine.buildGraph(igPos === 'ST', !!window.__bmMech);
+            for (const [state, a, b] of [['solHold', 'sol_ST', 'sol_G'], ['solPull', 'sol_ST', 'sol_M']]) {
+                if (faultState[state] !== 'Normal') continue;
+                (graph[a] ||= []).push(b);
+                (graph[b] ||= []).push(a);
+            }
+            return graph;
+        }
+
+        function resistanceSafetyWarning() {
+            if (knobModes[currentModeIndex].type !== 'res' ||
+                probeState.red.jack !== 'volts' || probeState.black.jack !== 'com' ||
+                !probeContact.red || !probeContact.black) return '';
+            const nodes = [probeContact.red, probeContact.black];
+            const graph = measurementSupplyGraph();
+            const touchesSupply = nodes.some(node => CircuitEngine.isConnected(node, 'bat_pos', graph));
+            if (!touchesSupply || (repairPowerIsolated && !nodes.includes('bat_neg'))) return '';
+            return '帶電量電阻可能損壞電表或電路，已停止量測。請先切回 OFF；保險絲與 B 主電源仍可能帶電，須拆離電瓶負極，再用電壓檔確認測試兩端無電壓。';
+        }
+
+        function renderMultimeterReading(warning) {
             const mode = knobModes[currentModeIndex];
             const display = document.getElementById('meter-display');
             if (mode.type === 'off') { display.textContent = ""; return; }
             if (probeState.red.jack !== 'volts' || probeState.black.jack !== 'com') { display.textContent = "0.00"; return; }
             if (!probeContact.red || !probeContact.black) { if (mode.type === 'res') display.textContent = "1 ."; else display.textContent = "0.00"; return; }
+            if (warning) { display.textContent = 'LIVE'; return; }
             if (mode.type === 'dcv') {
                 const _st = (igPos === 'ST');
                 let vRed = CircuitEngine.getVoltageAtNode(probeContact.red, _st, window.__bmMech ? true : false);
                 let vBlack = CircuitEngine.getVoltageAtNode(probeContact.black, _st, window.__bmMech ? true : false);
-                display.textContent = (vRed - vBlack).toFixed(2);
+                let voltage = vRed - vBlack;
+                if (repairPowerIsolated) {
+                    // Floating vehicle circuits follow the meter reference after the battery return is removed.
+                    const graph = measurementSupplyGraph();
+                    const positive = node => CircuitEngine.isConnected(node, 'bat_pos', graph);
+                    voltage = probeContact.black === 'bat_neg' && positive(probeContact.red) ? 12 :
+                        probeContact.red === 'bat_neg' && positive(probeContact.black) ? -12 : 0;
+                }
+                display.textContent = voltage.toFixed(2);
             } else if (mode.type === 'res') {
                 let r = CircuitEngine.getResistance(probeContact.red, probeContact.black);
                 if (r === -1) display.textContent = "1 ."; else if (r >= 1000) display.textContent = (r/1000).toFixed(2) + "k"; else display.textContent = r.toFixed(1);
@@ -749,8 +954,14 @@
         circuitSvg.addEventListener('contextmenu', (e)=>{ e.preventDefault(); const t = (e.target && e.target.closest) ? e.target.closest('.wire') : null; if (t && t.dataset.idx !== undefined) { removeWireAt(parseInt(t.dataset.idx, 10)); return; } isDrawing=false; currentPath = []; if(previewLine){previewLine.remove(); previewLine=null;} document.querySelectorAll('.conn-point.active').forEach(p => p.classList.remove('active')); });
         document.getElementById('clearBtn').addEventListener('click', () => { if(confirm('確定要清除所有連線嗎？')) { if (deleteMode) toggleDeleteMode(); if (window.NTC_LOG) NTC_LOG.log('wire_clear_all', { count: connections.length }); wireLayer.innerHTML = ''; connections = []; isDrawing = false; currentPath = []; if(previewLine) { previewLine.remove(); previewLine = null; } document.querySelectorAll('.conn-point.active').forEach(p => p.classList.remove('active')); runSimulation(); } });
         const igStBtn = document.getElementById('igStBtn');
-        igStBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); stHolding = true; igPos = 'ST'; syncIgUI(); if (window.NTC_LOG) NTC_LOG.log('st_hold', {}); runSimulation(); });
-        window.addEventListener('pointerup', () => { if (stHolding) { stHolding = false; igPos = igLatch; syncIgUI(); runSimulation(); } });
+        igStBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); if (igPos !== 'IG') return; stHolding = true; igLatch = 'IG'; igPos = 'ST'; syncIgUI(); if (window.NTC_LOG) NTC_LOG.log('st_hold', {}); runSimulation(); });
+        function releaseStarter() {
+            if (!stHolding) return;
+            stHolding = false; igPos = igLatch = 'IG'; syncIgUI(); runSimulation();
+        }
+        window.addEventListener('pointerup', releaseStarter);
+        window.addEventListener('pointercancel', releaseStarter);
+        window.addEventListener('blur', releaseStarter);
 
         // 單線刪除模式（練習/考評皆可刪自己的線）
         let deleteMode = false;

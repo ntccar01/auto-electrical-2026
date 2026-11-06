@@ -22,6 +22,10 @@
 
         function choosePracticeMode() {
             isAssessmentMode = false;
+            repairProgress = null;
+            faultState = freshFaultState();
+            resetFaultPanelUI();
+            setModeUI(false);
             currentActiveFault = 'normal';
             document.getElementById('modeDisplay').textContent = "練習模式";
             document.getElementById('modeDisplay').className = "mode-indicator mode-practice";
@@ -135,7 +139,7 @@
                 try { repairProgress = null; } catch (e) {}
             }
             try { window.__NTC_LAST_CTX = _ctx; } catch (e) {}
-            updateFaultStateFromRandom();
+            if (!repairProgress) updateFaultStateFromRandom();
 
             document.getElementById('modeDisplay').textContent = "考評模式";
             document.getElementById('modeDisplay').className = "mode-indicator mode-exam";

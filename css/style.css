@@ -84,6 +84,8 @@
         .btn-switch { background-color: #8e44ad; } .btn-switch:hover { background-color: #732d91; }
         .btn-guide { background-color: #e67e22; } .btn-guide:hover { background-color: #d35400; }
 
+        .start-controls { position: static; margin: 15px; flex-wrap: wrap; }
+        .start-controls .clear-btn, .start-controls .del-btn { position: static; }
         .clear-btn { position: absolute; bottom: 15px; left: 15px; padding: 8px 16px; background-color: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 100; }
         .del-btn { position: absolute; bottom: 15px; left: 125px; padding: 8px 16px; background-color: #e67e22; color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 100; font-family: "Microsoft JhengHei"; font-size: 14px; }
         .del-btn:hover { background-color: #d35400; }
@@ -147,10 +149,11 @@
         .relay-switch-blade { stroke: #000; stroke-width: 2; transition: all 0.1s; transform-origin: 40px 80px; }
         .relay-active .relay-coil-path { stroke: #007bff; stroke-width: 3; }
         .relay-active .relay-switch-blade { transform: rotate(15deg); stroke: #28a745; }
-        @keyframes flow { to { stroke-dashoffset: -20; } }
+        @keyframes wireFlow { to { stroke-dashoffset: -15; } }
+        @keyframes componentFlow { to { stroke-dashoffset: -12; } }
         .wire { fill: none; stroke: #d32f2f; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; pointer-events: stroke; transition: stroke 0.3s; }
-        .wire.flowing { stroke: #ff5722; stroke-dasharray: 10, 5; animation: flow 0.5s linear infinite; stroke-width: 4; }
-        .component-internal.flowing, .fusible-link-wire.flowing, .relay-switch-path.flowing, .relay-coil-path.flowing { stroke: #ff5722; stroke-width: 3; stroke-dasharray: 8, 4; animation: flow 0.5s linear infinite; }
+        .wire.flowing { stroke: #ff5722; stroke-dasharray: 10, 5; animation: wireFlow 0.5s linear infinite; stroke-width: 4; }
+        .component-internal.flowing, .fusible-link-wire.flowing, .relay-switch-path.flowing, .relay-coil-path.flowing { stroke: #ff5722; stroke-width: 3; stroke-dasharray: 8, 4; animation: componentFlow 0.5s linear infinite; }
         .relay-coil-path.flowing { stroke: #ff5722; stroke-dasharray: none; animation: none; }
         .wire-preview { fill: none; stroke: #ff9800; stroke-width: 2; stroke-dasharray: 5,5; pointer-events: none; }
         .wifi-signal { display: none; } .honking .wifi-signal { display: block; }
@@ -181,3 +184,11 @@
     #oemFloat { box-sizing: border-box; max-width: calc(100% - 24px); right: 12px; }
     .t-wrap { box-sizing: border-box; max-width: 100%; overflow-x: auto; }
 }
+
+.meter-safety { max-width: 1100px; padding: 12px; margin: 0 auto 12px; border: 2px solid #c0392b; border-radius: 6px; background: #fff3e0; color: #8b220f; }
+.ctl-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.flowing.flow-reverse { animation-direction: reverse; }
+
+#repairGuide { margin: 12px 15px; padding: 12px; line-height: 1.6; color: #203b4e; background: #edf6fb; border-left: 4px solid #24749a; overflow-wrap: anywhere; }
+@media (max-width: 1200px) { #repairGuide { flex: 1 1 100%; margin: 0; } }

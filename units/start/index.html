@@ -104,11 +104,14 @@
         <span id="statusMsg">請連接線路進行測試。</span>
     </div>
     <div class="control-bar">
-        <span>點火開關：</span><button id="igOffBtn" class="ctl-btn active" onclick="setIgnition('OFF')">OFF</button><button id="igOnBtn" class="ctl-btn" onclick="setIgnition('IG')">IG/ON</button><button id="igStBtn" class="ctl-btn">按住ST啟動</button>
+        <span>點火開關：</span><button id="igOffBtn" class="ctl-btn active" onclick="setIgnition('OFF')">OFF</button><button id="igOnBtn" class="ctl-btn" onclick="setIgnition('IG')">IG/ON</button><button id="igStBtn" class="ctl-btn" disabled>按住ST啟動</button>
         <span style="margin-left:12px">檔位：</span><button class="ctl-btn gear active" data-g="P" onclick="setGear('P')">P</button><button class="ctl-btn gear" data-g="R" onclick="setGear('R')">R</button><button class="ctl-btn gear" data-g="N" onclick="setGear('N')">N</button><button class="ctl-btn gear" data-g="D" onclick="setGear('D')">D</button>
+        <span id="batteryStatus" role="status">電瓶負極：已接妥</span>
+        <button id="isolatePowerBtn" class="ctl-btn" onclick="toggleRepairPower()">拆離電瓶負極</button>
         <span style="margin-left:12px">起動電流：<strong id="crankAmps">0</strong> A</span>
     </div>
 
+    <p id="meterSafety" role="alert" class="meter-safety hidden"></p>
     <div class="main-layout">
         <div class="circuit-area">
             <svg id="circuitSvg" width="800" height="500" viewBox="0 0 800 500">
@@ -185,15 +188,18 @@
                     <text x="68" y="96" text-anchor="end" font-size="10">電樞線圈</text>
                     <line x1="74" y1="82" x2="74" y2="125" stroke="black" stroke-width="2"/>
                     <circle cx="74" cy="125" r="4" class="conn-point" data-id="mot_gnd"/>
-                    <rect id="pinionGear" x="31" y="-34" width="28" height="12" rx="2" fill="#7f8c8d" stroke="#000" stroke-width="1" visibility="hidden" class="mot-vibe"/>
-                    <g id="motSpin" visibility="hidden" class="mot-vibe"><path d="M23,-40 A12,12 0 0 0 23,-16" fill="none" stroke="#e67e22" stroke-width="3"/><path d="M67,-40 A12,12 0 0 1 67,-16" fill="none" stroke="#e67e22" stroke-width="3"/></g>
+                    <rect id="pinionGear" x="31" y="-34" width="28" height="12" rx="2" fill="#7f8c8d" stroke="#000" stroke-width="1" visibility="hidden"><title>起動齒輪，電磁開關吸合時嚙合</title></rect>
+                    <g id="motSpin" visibility="hidden"><path d="M23,-40 A12,12 0 0 0 23,-16" fill="none" stroke="#e67e22" stroke-width="3"/><path d="M67,-40 A12,12 0 0 1 67,-16" fill="none" stroke="#e67e22" stroke-width="3"/></g>
                     <circle cx="74" cy="156" r="4" class="conn-point" data-id="mot_chassis"/>
                     <line x1="74" y1="160" x2="74" y2="166" stroke="black" stroke-width="2"/><line x1="62" y1="166" x2="86" y2="166" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="67" y1="171" x2="81" y2="171" stroke="black" stroke-width="2" stroke-linecap="round"/><line x1="71" y1="176" x2="77" y2="176" stroke="black" stroke-width="2" stroke-linecap="round"/>
                 </g>
             </svg>
+            <p id="repairGuide" class="hidden" role="status"></p>
+            <div class="controls-container start-controls">
             <button id="clearBtn" class="clear-btn">清除連線</button>
             <button id="deleteWireBtn" class="del-btn" onclick="toggleDeleteMode()">刪除單線</button>
-            <div class="controls-container">
+                <button id="benchBtn" class="action-btn btn-guide hidden" onclick="openComponentBench()">拆下元件／台架檢查</button>
+                <button id="guidedRepairBtn" class="action-btn btn-guide hidden" onclick="startGuidedRepair()">引導查修練習</button>
                 <button id="faultBtn" class="action-btn btn-fault hidden">故障設定</button>
                 <button id="toExamBtn" class="action-btn btn-switch hidden" onclick="switchModeToExam()">切換至考評模式</button>
                 <button id="submitAnswerBtn" class="action-btn btn-submit hidden">繳交診斷報告</button>
@@ -235,21 +241,25 @@
         </div>
 
         <div id="oemFloat" class="hidden">
-            <div id="oemHead"><span>📖 原廠線路圖</span><span><button class="oem-tab active" data-tab="diagram" onclick="OEM.tab('diagram')">線路圖</button><button class="oem-tab" data-tab="values" onclick="OEM.tab('values')">正常值</button><button onclick="OEM.zoom(40)">＋</button><button onclick="OEM.zoom(-40)">－</button><button onclick="OEM.minimize()">_</button><button onclick="OEM.toggle(false)">×</button></span></div>
+            <div id="oemHead"><span>📖 查修參考</span><span><button class="oem-tab active" data-tab="diagram" onclick="OEM.tab('diagram')">線路圖</button><button class="oem-tab" data-tab="values" onclick="OEM.tab('values')">正常值</button><button onclick="OEM.zoom(40)">＋</button><button onclick="OEM.zoom(-40)">－</button><button onclick="OEM.minimize()">_</button><button onclick="OEM.toggle(false)">×</button></span></div>
             <div id="oemBody">
-                <div id="oemTabDiagram"><img src="./oem-diagram.svg?v=3" alt="起動系統原廠線路圖"></div>
+                <div id="oemTabDiagram"><img src="./oem-diagram.svg?v=3" alt="起動系統教學線路圖"></div>
                 <div id="oemTabValues" class="hidden">
+                    <p>本表為本模擬器的正常教學參考值。實車查修請依車型維修手冊的規格與測試條件判斷。</p>
                     <table class="oem-values">
-                        <tr><th>量測點</th><th>正常值</th><th>檔位</th></tr>
-                        <tr><td>電瓶開路／起動電壓</td><td>12.6V／≧9.6V</td><td>DCV 20V</td></tr>
-                        <tr><td>保險絲前後端（對搭鐵）</td><td>12V</td><td>DCV 20V</td></tr>
-                        <tr><td>吸住線圈 ST-G</td><td>約30Ω（斷電量）</td><td>Ω 200</td></tr>
-                        <tr><td>吸入線圈 ST-M</td><td>約2Ω（斷電量）</td><td>Ω 200</td></tr>
-                        <tr><td>馬達本體 M-搭鐵</td><td>約1.5Ω（斷電量）</td><td>Ω 200</td></tr>
-                        <tr><td>B-M接點（吸合）</td><td>導通 0.1Ω／壓降≦2.5V</td><td>Ω 200／DCV 20V</td></tr>
-                        <tr><td>點火ST／空檔開關</td><td>導通 0.1Ω</td><td>Ω 200</td></tr>
-                        <tr><td>起動電流（搖轉）</td><td>100–300A</td><td>顯示值</td></tr>
+                        <tr><th>量測點與條件</th><th>正常值</th><th>檔位</th></tr>
+                        <tr><td>電瓶正極對負極，模擬電源接通</td><td>12.00 V</td><td>DCV 20V</td></tr>
+                        <tr><td>保險絲入端、出端各對電瓶負極，供電接通</td><td>各約 12 V</td><td>DCV 20V</td></tr>
+                        <tr><td>保險絲兩端，切斷測試迴路電源</td><td>約 0.1 Ω</td><td>200Ω</td></tr>
+                        <tr><td>空檔開關入端、出端各對電瓶負極，上游供電正常、P／N 檔、按住 ST</td><td>各約 12 V</td><td>DCV 20V</td></tr>
+                        <tr><td>空檔開關兩端，切斷測試迴路電源</td><td>P／N 約 0.1 Ω；R／D 開路</td><td>200Ω</td></tr>
+                        <tr><td>吸住線圈 ST-G，斷電並隔離元件</td><td>約 30 Ω</td><td>200Ω</td></tr>
+                        <tr><td>吸入線圈 ST-M，斷電並隔離元件</td><td>約 2 Ω</td><td>200Ω</td></tr>
+                        <tr><td>馬達本體 M-搭鐵，斷電並隔離元件</td><td>約 1.5 Ω</td><td>200Ω</td></tr>
+                        <tr><td>B-M 接點兩端壓降，配線完整、P／N 檔、按住 ST 且電磁開關吸合</td><td>約 0 V</td><td>DCV 20V</td></tr>
+                        <tr><td>起動電流，配線與元件正常、P／N 檔、按住 ST</td><td>180 A（狀態示意）</td><td>畫面電流顯示</td></tr>
                     </table>
+                    <p>開路時電表顯示「1 .」。量電阻前先斷電；點火 OFF 後，保險絲與 B 主電源仍可能帶電。實車測試時須確認斷電及元件隔離。</p>
                 </div>
             </div>
         </div>

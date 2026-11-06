@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>起動電磁開關台架練習</title>
+<link rel="stylesheet" href="./bench.css">
+</head>
+<body>
+<main>
+<header><p class="version">練習試用版 START-BENCH-V4</p><h1>起動電磁開關台架檢查</h1>
+<p>本頁模擬拆下元件後的獨立測試。原電路的故障與維修進度保留在原分頁。接回原電路後，仍須重新確認起動功能。</p></header>
+<section aria-labelledby="setupHeading"><h2 id="setupHeading">台架設定</h2>
+<label>練習情境 <select id="scenario"><option value="normal">正常接點</option><option value="fail">B–M 接點不導通</option><option value="high_resistance">B–M 接點接觸不良／電阻過大</option><option value="hold_open">吸住線圈開路／無法保持</option></select></label>
+<p>本情境設定吸入線圈可拉動柱塞；若吸住線圈開路，主接點閉合後便無法保持，因而反覆吸合、回位。動作採慢速示意，實際頻率依元件及供電而異。B 接測試電源正極，G 接負極，M 經 1.5Ω 模擬負載回到負極；按住線圈按鈕時，ST 接正極。實車須依車型手冊與專用測試設備操作。</p>
+<button id="power" type="button" aria-pressed="false">接通台架電源</button>
+<strong id="powerState">台架電源已斷開</strong>
+</section>
+<div class="columns">
+<section aria-labelledby="mechanicalHeading"><h2 id="mechanicalHeading">機械動作</h2>
+<svg viewBox="0 0 480 380" role="img" aria-labelledby="diagramTitle">
+<title id="diagramTitle">起動電磁開關的 B、M 主接點與 ST、G 線圈端子</title>
+<rect x="30" y="25" width="420" height="260" rx="12" fill="#e9f0f3" stroke="#526b7a"/>
+<text id="holdLabel" x="100" y="65">吸住線圈 ST–G 30Ω</text>
+<path d="M70 145V90H120l10 -10 20 20 20 -20 20 20 20 -20 20 20 10 -10H335" fill="none" stroke="#526b7a" stroke-width="3"/><circle cx="70" cy="120" r="5"/><circle cx="335" cy="90" r="5"/>
+<text x="100" y="125">吸入線圈 ST–M 2Ω</text>
+<path d="M70 145H120l10 -10 20 20 20 -20 20 20 20 -20 20 20 10 -10H310" fill="none" stroke="#526b7a" stroke-width="3"/>
+<text x="35" y="120">ST</text><text x="350" y="95">G</text>
+<path d="M310 145H385V230" fill="none" stroke="#526b7a" stroke-width="3"/>
+<circle cx="100" cy="230" r="7"/><circle cx="385" cy="230" r="7"/>
+<path id="contact" d="M100 230L300 190" stroke="#273e4d" stroke-width="7"/>
+<text x="80" y="267">B</text><text x="375" y="267">M</text>
+<rect id="plunger" x="200" y="160" width="60" height="20" fill="#7f8c8d"/>
+<path d="M190 330H310" stroke="#607d8b" stroke-width="2"/>
+<g id="pinion" transform="translate(210 330)">
+<path d="M-18 -6H-13V-14H-6V-18H6V-14H13V-6H18V6H13V14H6V18H-6V14H-13V6H-18Z" fill="#85969c" stroke="#273e4d" stroke-width="2"/>
+<circle r="6" fill="#e9f0f3" stroke="#273e4d"/>
+</g>
+<text x="40" y="365">小齒輪位移示意</text>
+</svg>
+<p id="motion" role="status">柱塞已回位</p>
+<button id="coil" type="button" disabled>按住線圈通電</button>
+<button id="manual" type="button">斷電後按住柱塞</button>
+<p>接點高阻時仍可機械吸合，須以斷電電阻和通電壓降確認接觸品質。</p><p>通電測吸合時，切到 DCV 比較主接點壓降。斷電測導通時，可用手動柱塞模擬接點閉合，再量電阻。</p>
+</section>
+<section aria-labelledby="measurementHeading"><h2 id="measurementHeading">量測</h2>
+<label>電表檔位 <select id="mode"><option value="voltage">DCV 20V</option><option value="resistance">200Ω</option></select></label>
+<label>紅探棒 <select id="red"><option>B</option><option>M</option><option>ST</option><option>G</option></select></label>
+<label>黑探棒 <select id="black"><option>M</option><option>B</option><option>ST</option><option>G</option></select></label>
+<output id="reading" aria-label="電表讀值">0.00 V</output>
+<p id="warning" role="alert" hidden></p>
+<div class="load-panel">
+<svg viewBox="0 0 100 100" role="img" aria-labelledby="motorTitle"><title id="motorTitle">模擬負載驅動動作</title>
+<circle cx="50" cy="50" r="40" fill="#e9f0f3" stroke="#526b7a" stroke-width="3"/>
+<g id="motorRotor"><path d="M50 18V38M50 62V82M18 50H38M62 50H82" stroke="#135d7b" stroke-width="8"/></g>
+<text x="50" y="57" text-anchor="middle" font-size="22">M</text></svg>
+<div><p id="loadStatus" role="status">台架斷電，模擬負載停止</p>
+<p>B–M 主接點電流 <strong id="contactCurrent">0.00 A</strong><br>模擬負載總電流 <strong id="loadCurrent">0.00 A</strong></p></div>
+</div>
+<p>負載總電流包含吸入線圈回送電流。轉速動畫依負載電流比例示意；台架負載為教學電阻，未模擬實車馬達扭力及轉速。</p>
+<p>電表顯示 OL 表示開路。通電時 Ω 檔停止量測；請斷開台架電源，切到 DCV 確認無電壓，再使用 Ω 檔。</p>
+<details><summary>查看正常教學參考值</summary>
+<table><thead><tr><th>條件</th><th>B–M 正常值</th></tr></thead><tbody>
+<tr><td>斷電，柱塞回位</td><td>OL</td></tr>
+<tr><td>斷電，手動按住柱塞</td><td>約 0.01Ω</td></tr>
+<tr><td>通電，按住線圈，主接點穩定閉合</td><td>壓降約 0.08V</td></tr>
+<tr><td>接點高阻，斷電手動按住柱塞</td><td>3.0Ω（故障情境教學設定）</td></tr>
+<tr><td>接點高阻，通電按住線圈</td><td>B–M 約5.33V；M–G 約6.67V</td></tr>
+</tbody></table>
+<p>正常接點設0.01Ω，高阻接點設3Ω，電源12V、負載1.5Ω、吸入線圈2Ω；電壓與電流依同一組參數計算。正常負載總電流約7.95A，高阻時約4.44A。皆為本台架教學設定，實車依車型手冊。</p><p>吸住線圈開路時，斷電量 ST–G 應為 OL；正常約30Ω。吸入線圈 ST–M 正常約2Ω。斷開電源後，外接台架負載自動隔離，便於檢查元件本體。皆為本模擬器教學值。</p><p>觀察到斷續吸合後，先確認供電與接線，再斷電量 ST–G。只有動作現象，還不足以確定吸住線圈開路。</p></details>
+</section>
+</div>
+<section><h2>檢查紀錄</h2><p>先選探棒與檔位，再按住柱塞或線圈按鈕。鬆開時自動記錄有效讀值，也可手動記錄回位狀態。紀錄只保留於此頁，離開或重新整理前請下載。</p>
+<div class="record-identity">
+<label>班級代號 <input id="recordClass" maxlength="30" autocomplete="off" placeholder="例如 AUTO_A"></label>
+<label>座號 <input id="recordSeat" maxlength="3" inputmode="numeric" autocomplete="off" placeholder="1～999"></label>
+</div>
+<p>請在記錄前填寫班級代號與座號。每筆保留當時的填寫值，修改資料不會追溯變更舊記錄。</p>
+<div class="record-actions">
+<button id="record" type="button">記錄目前讀值</button>
+<button id="downloadRecords" type="button" disabled>下載記錄 CSV</button>
+<button id="clearRecords" type="button" disabled>清空記錄</button>
+<strong id="recordCount">目前 0 筆</strong>
+</div>
+<p id="recordStatus" role="status">CSV 包含每筆日期時間與操作，可自行提交教師參考。</p>
+<ol id="records" aria-live="polite"></ol>
+</section>
+<footer><p>比較完成後關閉本分頁，回原電路繼續查修。此台架練習不計入考評成績。</p></footer>
+</main>
+<script src="./bench.js"></script>
+</body>
+</html>

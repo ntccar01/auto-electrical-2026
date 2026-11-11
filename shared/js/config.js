@@ -5,7 +5,7 @@
 window.NTC_CONFIG = {
   version: '2.0-P0',
   // 教師專用 GAS Web App URL（以教師帳號登入，匯入學生提交檔）
-  gasUrl: 'https://script.google.com/a/macros/gm.ntc.edu.tw/s/AKfycbwo853tYfgCzRkCSPPRrNCWtXrzgAnYXZ1HMZsaGtoV-W1yLidqJ1RZIwxiETkJsF-Y/exec',
+  gasUrl: 'https://script.google.com/a/macros/gm.ntc.edu.tw/s/AKfycbwjXTH4KDgM7IlZd3_sR8KONW8PymWHiZseardrQF-x5h8_Ztna-UPMCDqswB248o5P/exec',
   semester: '115-1',
   // 單元註冊表：採計勾選與學習地圖由此驅動
   units: [

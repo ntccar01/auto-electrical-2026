@@ -197,3 +197,27 @@ for(const id of ['HORN-C-01','HORN-C-02','HORN-C-03','HORN-C-04']){
   assert.equal(h.run("Object.values(faultState).every(value=>value==='Normal')"),true);
  });
 }
+for (const unit of ['horn','start']) {
+  test(`${unit}: exam retakes keep counting after restart and failed exams hide the answer`, () => {
+    let store = new Map();
+    const ctx0 = {cls:'TEST_A',seat:'1',paper:'A',date:'2026-11-11'};
+    const submit = (pick) => {
+      const h = app(unit, Object.fromEntries(store));
+      h.run(`isAssessmentMode=true;window.__NTC_LAST_CTX=${JSON.stringify(ctx0)};NTC_LOG.setSession({unit:'${unit}',mode:'exam',level:'standard'});currentActiveFault='fuse_open';`);
+      h.run(`(function(){const isCorrect='${pick}'===currentActiveFault;const hideAnswer=isAssessmentMode&&!isCorrect;lastResultData={studentClass:'TEST_A',seatNumber:'1',multi:false,track:'S',correctFault:hideAnswer?'（通過後顯示）':'保險絲斷路',answerHidden:hideAnswer,isPass:isCorrect};finishSubmit({});})()`);
+      store = h.store;
+      return h.ctx.lastResultData ?? h.run('lastResultData');
+    };
+    const first = submit('normal');
+    assert.equal(first.attemptNo, 1); assert.equal(first.score.parts['一次繳交'], 10);
+    assert.equal(first.answerHidden, true); assert.equal(first.correctFault, '（通過後顯示）');
+    const second = submit('fuse_open');
+    assert.equal(second.attemptNo, 2, 'restart must not reset the attempt count');
+    assert.equal(second.score.parts['一次繳交'], 5);
+    assert.equal(second.answerHidden, false);
+  });
+}
+test('Logger export keeps the start C functional-confirmation part', () => {
+  const src = fs.readFileSync(path.join(root,'shared/js/logger.js'),'utf8');
+  assert.ok(src.includes("'功能確認'"), 'exportRecords must include 功能確認');
+});

@@ -204,5 +204,52 @@ window.ASSESS = (function () {
     return r.multi ? scoreMulti(r) : scoreSingle(r);
   }
 
-  return { score: score, checkWiring: checkWiring, CLOSE_PAIRS: CLOSE_PAIRS };
+  // ===== 考評重考紀錄（2026-11-11）=====
+  // 同一單元／班級／座號／試卷／難度在同一天的繳交次數，跨「重新開始」保留，
+  // 避免重新登入後繳交次數歸零。存在本機瀏覽器；清除瀏覽器資料或換電腦仍會重算，
+  // 教師端歷史紀錄仍會保留每一次繳交。
+  var ATTEMPT_KEY = 'ntc-attempts-v1';
+  var ATTEMPT_KEEP_DAYS = 60;
+  function attemptKey(ctx, level) {
+    ctx = ctx || {};
+    return [unitNow(), ctx.cls || '', ctx.seat || '', ctx.paper || '', level || '', ctx.date || ''].join('|');
+  }
+  function attemptStore() {
+    try { return JSON.parse(localStorage.getItem(ATTEMPT_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function priorAttempts(ctx, level) {
+    var hit = attemptStore()[attemptKey(ctx, level)];
+    return (hit && hit.n) || 0;
+  }
+  function recordAttempt(ctx, level) {
+    var store = attemptStore(), key = attemptKey(ctx, level), now = Date.now();
+    var limit = now - ATTEMPT_KEEP_DAYS * 86400000;
+    Object.keys(store).forEach(function (k) { if (!store[k] || store[k].last < limit) delete store[k]; });
+    store[key] = { n: ((store[key] && store[key].n) || 0) + 1, last: now };
+    try { localStorage.setItem(ATTEMPT_KEY, JSON.stringify(store)); } catch (e) {}
+    return store[key].n;
+  }
+
+  // ===== 考評未通過的回饋：只說差在哪裡，不公布答案 =====
+  function examFeedback(r) {
+    var tips = [];
+    if (r.multi) {
+      if ((r.faultHits || 0) < ((r.correctFaults && r.correctFaults.length) || 2) || (r.faultExtras || 0) > 0) tips.push('故障尚未全部正確找出（可能有遺漏或多選）');
+      if (r.evidenceHits === 0 || (r.evidence && r.evidence.length < 2)) tips.push('量測證據不足，請以量測結果支持你的判斷');
+    } else {
+      tips.push('診斷結果不正確');
+    }
+    var w = checkWiring();
+    if (w.ok < w.total) tips.push('配線尚未完成（' + w.ok + '／' + w.total + ' 段）');
+    var modes = probeModes().join(' ');
+    if (!(r.measureCount > 0)) tips.push('沒有量測紀錄，請先用電表找證據再作答');
+    else {
+      if (!/V/.test(modes)) tips.push('沒有使用電壓檔量測');
+      if (!/Ω|K/.test(modes)) tips.push('沒有使用電阻檔量測');
+    }
+    return tips;
+  }
+
+  return { score: score, checkWiring: checkWiring, CLOSE_PAIRS: CLOSE_PAIRS,
+    priorAttempts: priorAttempts, recordAttempt: recordAttempt, examFeedback: examFeedback };
 })();

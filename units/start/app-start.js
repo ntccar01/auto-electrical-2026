@@ -506,8 +506,8 @@
             else { resultTitle.textContent = "❌ 診斷未完全正確"; resultTitle.className = "result-fail"; resultText.textContent = "故障或證據有缺漏，請看明細。"; }
             const rOk = window.NTC_LOG ? NTC_LOG.count('repair_ok') : 0;
             const rMiss = window.NTC_LOG ? NTC_LOG.count('repair_miss') : 0;
-            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>找出的故障：</strong>${list(ev.checked)}<br><strong>正確故障：</strong><span style="color:red">${list(ev.correct)}</span><br><strong>量測證據：</strong>${ev.evd.length} 點（命中關鍵 ${ev.evHits.length}）<br><strong>維修紀錄：</strong>成功 ${rOk}／試誤 ${rMiss}`;
-            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, evidenceStages: repairStageDoneCount(), finalConfirmed: repairProgress.finalConfirmed, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: list(ev.correct) };
+            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>找出的故障：</strong>${list(ev.checked)}${(isAssessmentMode && !ev.pass) ? '' : `<br><strong>正確故障：</strong><span style="color:red">${list(ev.correct)}</span>`}<br><strong>量測證據：</strong>${ev.evd.length} 點（命中關鍵 ${ev.evHits.length}）<br><strong>維修紀錄：</strong>成功 ${rOk}／試誤 ${rMiss}`;
+            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, evidenceStages: repairStageDoneCount(), finalConfirmed: repairProgress.finalConfirmed, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: (isAssessmentMode && !ev.pass) ? '（通過後顯示）' : list(ev.correct), answerHidden: isAssessmentMode && !ev.pass };
             finishSubmit({ choice: ev.checked.join('+'), correct: ev.pass });
         }
         function finishSubmit(extra) {
@@ -518,16 +518,28 @@
                 lastResultData.logEvents = NTC_LOG.exportData().events.length;
                 lastResultData.durationMs = NTC_LOG.elapsed();
                 lastResultData.level = (NTC_LOG.session && NTC_LOG.session.level) || '';
-                lastResultData.resubmits = NTC_LOG.count('diagnosis_submit');
+                const _actx = window.__NTC_LAST_CTX || {};
+                const _prior = isAssessmentMode && window.ASSESS && ASSESS.priorAttempts ? ASSESS.priorAttempts(_actx, lastResultData.level) : 0;
+                lastResultData.resubmits = Math.max(_prior, NTC_LOG.count('diagnosis_submit'));
+                lastResultData.attemptNo = lastResultData.resubmits + 1;
+                if (isAssessmentMode && window.ASSESS && ASSESS.recordAttempt) ASSESS.recordAttempt(_actx, lastResultData.level);
                 if (window.ASSESS && typeof ASSESS.score === 'function') lastResultData.score = ASSESS.score(lastResultData);
                 NTC_LOG.log('diagnosis_submit', Object.assign({ measureCount: lastResultData.measureCount, wireCount: lastResultData.wireCount }, extra || {}));
-                const archived = NTC_LOG.archive({ pass: !!lastResultData.isPass, score: lastResultData.score ? lastResultData.score.total : null, parts: (lastResultData.score && lastResultData.score.parts) || null, multi: !!lastResultData.multi });
+                const archived = NTC_LOG.archive({ pass: !!lastResultData.isPass, attempt: lastResultData.attemptNo, score: lastResultData.score ? lastResultData.score.total : null, parts: (lastResultData.score && lastResultData.score.parts) || null, multi: !!lastResultData.multi });
                 lastResultData.recordId = archived ? archived.recordId : null;
             }
             if (lastResultData.score) {
                 const s = lastResultData.score;
                 const rows = Object.keys(s.parts).map(k => `${k}：${s.parts[k]}`).join('<br>');
                 document.getElementById('resultDetails').innerHTML += `<br><br><strong>評分（初評）：${s.total} 分</strong><br>${rows}`;
+            }
+            if (isAssessmentMode) {
+                const _det = document.getElementById('resultDetails');
+                if (lastResultData.attemptNo) _det.innerHTML += `<br><br><strong>本卷今日第 ${lastResultData.attemptNo} 次繳交</strong>`;
+                if (!lastResultData.isPass && window.ASSESS && ASSESS.examFeedback) {
+                    const tips = ASSESS.examFeedback(lastResultData);
+                    _det.innerHTML += `<br><br><strong>未通過，請加強：</strong><br>` + tips.map(t => '・' + t).join('<br>') + `<br><span style="color:#7f8c8d">正確答案會在通過後顯示。</span>`;
+                }
             }
             document.getElementById('quizModal').classList.add('hidden');
             document.getElementById('resultModal').classList.remove('hidden');
@@ -548,9 +560,10 @@
             
             const correctLabel = faultOptions.find(f => f.id === currentActiveFault).label;
             const userLabel = faultOptions.find(f => f.id === userChoice).label;
-            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>您的答案：</strong>${userLabel}<br><strong>正確答案：</strong><span style="color:red">${correctLabel}</span>`;
+            const hideAnswer = isAssessmentMode && !isCorrect;
+            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>您的答案：</strong>${userLabel}` + (hideAnswer ? '' : `<br><strong>正確答案：</strong><span style="color:red">${correctLabel}</span>`);
             
-            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: false, track: 'S', userDiagnosis: userLabel, correctFault: correctLabel, isPass: isCorrect };
+            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: false, track: 'S', userDiagnosis: userLabel, correctFault: hideAnswer ? '（通過後顯示）' : correctLabel, answerHidden: hideAnswer, isPass: isCorrect };
             finishSubmit({ choice: userChoice, correct: isCorrect });
         });
 

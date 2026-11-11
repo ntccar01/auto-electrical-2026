@@ -123,7 +123,7 @@ window.NTC_LOG = (function () {
   function exportRecords(list) {
     return { version: 1, exportedAt: new Date().toISOString(), records: list.map(function (r) {
       var parts = {}, summary = r.summary || {};
-      ['結果正確','結果相近','量測覆蓋','檔位運用','配線完整','用時','一次繳交','故障找出','量測證據','分段維修'].forEach(function (key) {
+      ['結果正確','結果相近','量測覆蓋','檔位運用','配線完整','用時','一次繳交','故障找出','量測證據','分段維修','功能確認'].forEach(function (key) {
         if (summary.parts && typeof summary.parts[key] === 'number') parts[key] = summary.parts[key];
       });
       return { recordId: r.recordId, sid: r.sid, unit: r.unit, cls: r.cls, seat: r.seat, semester: r.semester || '',

@@ -52,7 +52,7 @@
 
         /* Modal Styles */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(5px); }
-        .modal-box { background: white; padding: 30px; border-radius: 10px; width: 450px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        .modal-box { background: white; padding: 30px; border-radius: 10px; width: 450px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); box-sizing: border-box; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
         .modal-box h2 { color: #2c3e50; margin-top: 0; margin-bottom: 20px; }
 
         .mode-selection-btns { display: flex; flex-direction: column; gap: 15px; }
@@ -71,6 +71,8 @@
         .btn-back { background: transparent; border: none; color: #7f8c8d; cursor: pointer; margin-top: 10px; text-decoration: underline; }
 
         .radio-group { text-align: left; margin: 20px 0; max-height: 300px; overflow-y: auto; }
+        /* 複合題同時有故障與證據兩個清單：依螢幕高度縮小，讓「確認送出」不必捲動也看得到 */
+        #quizMulti .radio-group { margin: 10px 0; max-height: min(300px, 26vh); }
         .radio-item { margin-bottom: 10px; padding: 10px; border: 1px solid #ecf0f1; border-radius: 5px; cursor: pointer; transition: background 0.2s; }
         .radio-item:hover { background-color: #f7f9f9; }
         .radio-item label { cursor: pointer; width: 100%; display: block; }

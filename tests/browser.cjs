@@ -141,9 +141,14 @@ let browser;
     const fault=await page.evaluate(()=>window.__NTC_LAST_ITEM.faults[0]);
     await page.locator(`input[name="diagnosis"][value="${fault}"]`).check();await page.locator('#confirmSubmitBtn').click();
     assert.ok((await page.locator('#resultDetails').textContent()).includes('初評'));
-    let rows=await page.evaluate(()=>NTC_LOG.history());assert.equal(rows.at(-1).sid,sid);assert.equal(rows.at(-1).summary.pass,true);assert.ok(!('name' in rows.at(-1)));
-    const downloadPromise=page.waitForEvent('download');await page.locator('.btn-download').click();const download=await downloadPromise;await download.saveAs(path.join(output,`${unit}-grade.csv`));
-    const csv=fs.readFileSync(path.join(output,`${unit}-grade.csv`),'utf8');assert.ok(!csv.includes('姓名'));assert.ok(csv.includes('TEST_A'));
+    let rows=await page.evaluate(()=>NTC_LOG.history());assert.equal(rows.at(-1).sid,sid);
+    // 2026-11-11 及格門檻：只答對、未配線未量測 → 診斷正確但不及格，且不公布答案
+    assert.equal(rows.at(-1).summary.pass,false);assert.equal(rows.at(-1).summary.diagnosisCorrect,true);assert.ok(!('name' in rows.at(-1)));
+    assert.ok((await page.locator('#resultTitle').textContent()).includes('未達及格門檻'));assert.ok(!(await page.locator('#resultDetails').textContent()).includes('正確答案：'));
+    // 成績檔：考評下載會詢問 6 碼代碼；此處不輸入代碼（空白→確認），應得到「未簽章」檔且不含正確答案
+    const csvDialog=d=>d.accept(d.type()==='prompt'?'':undefined);page.on('dialog',csvDialog);
+    const downloadPromise=page.waitForEvent('download');await page.locator('.btn-download').click();const download=await downloadPromise;await download.saveAs(path.join(output,`${unit}-grade.csv`));page.off('dialog',csvDialog);
+    const csv=fs.readFileSync(path.join(output,`${unit}-grade.csv`),'utf8');assert.ok(!csv.includes('姓名'));assert.ok(csv.includes('TEST_A'));assert.ok(csv.includes('未簽章'));assert.ok(csv.startsWith('\uFEFF班級代號,座號'));
     const jsonDownload=page.waitForEvent('download');await page.locator('.btn-upload').click();const json=await jsonDownload;await json.saveAs(path.join(output,`${unit}-submission.json`));
     const submission=JSON.parse(fs.readFileSync(path.join(output,`${unit}-submission.json`),'utf8'));assert.equal(submission.records.length,1);assert.equal(submission.records[0].recordId,rows.at(-1).recordId);assert.ok(!JSON.stringify(submission).includes('name'));
     // Submit again through the real UI to ensure records can be reviewed independently.
@@ -340,6 +345,8 @@ let browser;
       const lower=index===stages.length-1||id==='HORN-C-03'||id==='HORN-C-04';
       await checkHornButton(upper,lower);
     }
+    // 2026-11-11 及格門檻：複合題也要有實際的電壓與電阻量測紀錄
+    await horn.evaluate(ev=>{probeState.red.jack='volts';probeState.black.jack='com';probeContact.red=ev[0];probeContact.black='bat_neg';setMode(2);runSimulation();probeContact.red='horn1_in';probeContact.black='horn1_gnd';setMode(4);runSimulation();},evidence);
     await horn.locator('#submitAnswerBtn').click();
     for(const node of evidence) await horn.locator('input[name=mevd][value="'+node+'"]').check();
     await horn.locator('#confirmSubmitBtn').click();
@@ -522,5 +529,39 @@ let browser;
   await tp.setViewportSize({width:390,height:844});const mobileBox=await tp.locator('#circuitSvg').boundingBox();assert.ok(mobileBox.x>=0 && mobileBox.x+mobileBox.width<=390);
   await tp.screenshot({path:path.join(output,'mobile-start.png'),fullPage:true});await touch.close();
   console.log('PASS tablet touch wiring');
+  // 2026-11-11 成績檔：老師產生代碼 → 學生通過考評後輸入代碼下載 → 老師檢查（驗證通過／內容被修改）並匯入
+  {
+    const {makeGAS}=require('./gas-helpers.cjs');const g2=makeGAS();
+    const tp=await context.newPage();tp.on('pageerror',e=>errors.push(e.message));
+    await tp.exposeFunction('gasCall',(method,args)=>{assert.ok(['listRecords','createRoster','resetCode','listRoster','previewCsv','importCsv'].includes(method));return g2.ctx[method](...args);});
+    await tp.addInitScript(()=>{function chain(){let success=()=>{},failure=()=>{};let proxy;proxy=new Proxy({}, {get(_,key){if(key==='withSuccessHandler')return fn=>{success=fn;return proxy;};if(key==='withFailureHandler')return fn=>{failure=fn;return proxy;};return (...args)=>window.gasCall(key,args).then(success).catch(failure);}});return proxy;}window.google={script:{get run(){return chain();}}};});
+    await tp.goto(base+'/gas/Teacher.html');
+    await tp.locator('#rosterCls').fill('TEST_CSV');await tp.locator('#rosterFrom').fill('1');await tp.locator('#rosterTo').fill('3');await tp.locator('#rosterCreate').click();
+    await tp.waitForFunction(()=>document.querySelectorAll('.slip').length===3);
+    const code=await tp.locator('.slip b').first().textContent();assert.match(code,/^[A-Z2-9]{6}$/);
+    assert.ok(!JSON.stringify(g2.sheets.get('NTC_Roster').data).includes(code));
+    await tp.locator('#slipSection').screenshot({path:path.join(output,'roster-slips.png')});
+    const sp=await context.newPage();sp.on('pageerror',e=>errors.push(e.message));
+    const typed=['WRONG1',code.toLowerCase()];sp.on('dialog',d=>d.accept(d.type()==='prompt'?typed.shift():undefined));
+    await sp.goto(base+'/units/horn/');await sp.getByRole('button',{name:'📝 進入考評模式'}).click();
+    await sp.locator('#inputClass').fill('TEST_CSV');await sp.locator('#inputSeat').fill('1');await sp.locator('#inputLevel').selectOption('standard');await sp.getByRole('button',{name:'開始考評'}).click();
+    for(const [a,b] of HORN_WIRES){await sp.locator('.conn-point[data-id="'+a+'"]').click({force:true});await sp.locator('.conn-point[data-id="'+b+'"]').click({force:true});}
+    await sp.evaluate(()=>{probeState.red.jack='volts';probeState.black.jack='com';for(const m of [['fuse_out','bat_neg',2],['relay_87','bat_neg',2],['horn1_in','horn1_gnd',4]]){probeContact.red=m[0];probeContact.black=m[1];setMode(m[2]);runSimulation();}});
+    await sp.locator('#submitAnswerBtn').click();
+    const answer=await sp.evaluate(()=>currentActiveFault);await sp.locator('input[name="diagnosis"][value="'+answer+'"]').check();await sp.locator('#confirmSubmitBtn').click();
+    assert.match(await sp.locator('#resultTitle').textContent(),/通過！診斷正確/);assert.ok((await sp.locator('#resultDetails').textContent()).includes('正確答案：'));
+    const dl=sp.waitForEvent('download');await sp.locator('.btn-download').click();const file=path.join(output,'csv-signed.csv');await (await dl).saveAs(file);
+    const txt=fs.readFileSync(file,'utf8');assert.ok(!txt.includes('未簽章'));
+    const data=txt.split('\r\n')[1].split(',').at(-2);const j=JSON.parse(Buffer.from(data,'base64').toString('utf8'));j.record.summary.score=1;
+    const edited=path.join(output,'csv-edited.csv');fs.writeFileSync(edited,txt.replace(data,Buffer.from(JSON.stringify(j)).toString('base64')));
+    await tp.locator('#csvFiles').setInputFiles([file,edited]);await tp.locator('#csvPreview').click();
+    await tp.waitForFunction(()=>document.querySelectorAll('#csvRows tr').length===2);
+    assert.deepEqual(await tp.$$eval('#csvRows tr td:last-child',t=>t.map(x=>x.textContent)),['驗證通過','內容被修改']);
+    await tp.locator('#csvImport').click();await tp.waitForFunction(()=>document.querySelectorAll('#rows tr').length===1);
+    assert.ok((await tp.locator('#rows tr').first().innerText()).includes('✅ 驗證通過'));
+    const saved=g2.ctx.listRecords();assert.equal(saved.length,1);assert.equal(saved[0].verify,'ok');assert.notEqual(saved[0].summary.score,1);
+    await tp.screenshot({path:path.join(output,'teacher-csv-import.png'),fullPage:true});await tp.close();await sp.close();
+    console.log('PASS roster codes, signed student CSV, tamper detection and teacher CSV import');
+  }
   assert.deepEqual(errors,[]);console.log('ALL BROWSER CHECKS PASSED');await context.close();
 })().catch(e=>{console.error(e.stack);process.exitCode=1;}).finally(async()=>{if(browser)await browser.close();await new Promise(r=>server.close(r));});

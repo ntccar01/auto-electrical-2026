@@ -221,3 +221,25 @@ test('Logger export keeps the start C functional-confirmation part', () => {
   const src = fs.readFileSync(path.join(root,'shared/js/logger.js'),'utf8');
   assert.ok(src.includes("'功能確認'"), 'exportRecords must include 功能確認');
 });
+test('start: a fault on a student wire (B main power) does not count the wire as missing', () => {
+  const h = app('start'); wire(h, START_WIRES);
+  h.run("faultState.battB='Open';");
+  const w = h.ctx.ASSESS.checkWiring(); assert.equal(w.ok, w.total);
+});
+for (const unit of ['horn','start']) {
+  test(`${unit}: pass gate needs diagnosis, complete wiring, valid V and Ω measurements and 60 points`, () => {
+    const h = app(unit); const A = h.ctx.ASSESS, L = h.ctx.NTC_LOG;
+    const r = (score, diag=true) => ({ diagnosisCorrect: diag, multi: false, score: { total: score } });
+    assert.equal(A.passGate(r(100)).pass, false);
+    wire(h, unit === 'horn' ? HORN_WIRES : START_WIRES);
+    L.log('probe_measure', { red:'fuse_out', black:'bat_neg', mode:'20V', reading:'12.00', valid:true });
+    assert.equal(A.passGate(r(100)).checks.measure, false, 'one voltage reading is not enough');
+    L.log('probe_measure', { red:'fuse_in', black:'fuse_out', mode:'200Ω', reading:'0.1', valid:false });
+    assert.equal(A.passGate(r(100)).checks.measure, false, 'wrong-jack readings are not valid');
+    L.log('probe_measure', { red:'fuse_in', black:'fuse_out', mode:'200Ω', reading:'0.1', valid:true });
+    assert.equal(A.passGate(r(100)).pass, true);
+    assert.equal(A.passGate(r(59)).pass, false);
+    assert.equal(A.passGate(r(100, false)).pass, false);
+    assert.ok(A.passGate(r(100, false)).reasons.includes('診斷結果不正確'));
+  });
+}

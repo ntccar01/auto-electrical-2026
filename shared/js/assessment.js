@@ -48,18 +48,20 @@ window.ASSESS = (function () {
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-  function graphNow() {
+  // 配線檢核只看「學生接上的線」，不受故障設定影響（2026-11-11）。
+  // 原本用通電圖檢核，B 主電源線斷路等「設在學生配線上的斷路故障」會讓已接好的線被判為未完成，
+  // 導致該題即使診斷正確也無法通過及格門檻。
+  function wiringGraph() {
+    var adj = {};
     try {
-      var u = unitNow();
-      if (u === 'start') {
-        var st = (typeof igPos !== 'undefined') ? (igPos === 'ST') : false;
-        var bm = (typeof window !== 'undefined' && window.__bmMech) ? true : false;
-        return CircuitEngine.buildGraph(st, bm);
-      }
-      var pressed = (typeof isButtonPressed !== 'undefined') ? isButtonPressed : false;
-      var relayOn = document.getElementById('relay').classList.contains('relay-active');
-      return CircuitEngine.buildGraph(pressed, relayOn);
-    } catch (e) { return {}; }
+      var list = (typeof connections !== 'undefined' && Array.isArray(connections)) ? connections : [];
+      list.forEach(function (c) {
+        if (!c || !c.start || !c.end) return;
+        (adj[c.start] = adj[c.start] || []).push(c.end);
+        (adj[c.end] = adj[c.end] || []).push(c.start);
+      });
+    } catch (e) {}
+    return adj;
   }
 
   // 任一端在群組內即視為該要求達成（搭鐵網任一點皆可）
@@ -78,7 +80,7 @@ window.ASSESS = (function () {
     var u = unitNow();
     var groups = WIRING_SETS[u] || WIRING_SETS.horn;
     var grounds = GROUND_SETS[u] || GROUND_SETS.horn;
-    var g = graphNow();
+    var g = wiringGraph();
     var ok = 0;
     var missing = [];
     var ctrl = true;
@@ -230,26 +232,54 @@ window.ASSESS = (function () {
     return store[key].n;
   }
 
-  // ===== 考評未通過的回饋：只說差在哪裡，不公布答案 =====
-  function examFeedback(r) {
-    var tips = [];
-    if (r.multi) {
-      if ((r.faultHits || 0) < ((r.correctFaults && r.correctFaults.length) || 2) || (r.faultExtras || 0) > 0) tips.push('故障尚未全部正確找出（可能有遺漏或多選）');
-      if (r.evidenceHits === 0 || (r.evidence && r.evidence.length < 2)) tips.push('量測證據不足，請以量測結果支持你的判斷');
-    } else {
-      tips.push('診斷結果不正確');
+  // ===== 考評及格門檻（2026-11-11）=====
+  // 通過＝①診斷正確 ②配線完成 ③至少 2 筆有效量測，且電壓檔、電阻檔都用過 ④總分 ≥ 60。
+  // 有效量測：紅黑探棒都接觸量測點、檔位為電壓或電阻、有讀值、插孔正確（valid 不為 false）。
+  var PASS_SCORE = 60, MIN_VALID_MEASURES = 2;
+  function isVoltMode(m) { return /V$/.test(m || ''); }
+  function isOhmMode(m) { return /Ω|K$|M$/.test(m || ''); }
+  function validMeasures() {
+    var list = [];
+    try {
+      NTC_LOG.filter('probe_measure').forEach(function (e) {
+        var d = e.data || {};
+        if (d.red && d.black && d.valid !== false && d.reading !== '' && d.reading != null && (isVoltMode(d.mode) || isOhmMode(d.mode))) list.push(d);
+      });
+    } catch (e) {}
+    return list;
+  }
+  function passGate(r) {
+    var reasons = [];
+    var diagnosisOk = !!r.diagnosisCorrect;
+    if (!diagnosisOk) {
+      if (r.multi) {
+        if ((r.faultHits || 0) < ((r.correctFaults && r.correctFaults.length) || 2) || (r.faultExtras || 0) > 0) reasons.push('故障尚未全部正確找出（可能有遺漏或多選）');
+        if (r.evidenceHits === 0 || (r.evidence && r.evidence.length < 2)) reasons.push('量測證據不足，請以量測結果支持你的判斷');
+        if (!reasons.length) reasons.push('複合故障診斷未完全正確');
+      } else reasons.push('診斷結果不正確');
     }
     var w = checkWiring();
-    if (w.ok < w.total) tips.push('配線尚未完成（' + w.ok + '／' + w.total + ' 段）');
-    var modes = probeModes().join(' ');
-    if (!(r.measureCount > 0)) tips.push('沒有量測紀錄，請先用電表找證據再作答');
+    var wiringOk = w.ok >= w.total;
+    if (!wiringOk) reasons.push('配線尚未完成（' + w.ok + '／' + w.total + ' 段）');
+    var vm = validMeasures();
+    var hasV = vm.some(function (d) { return isVoltMode(d.mode); });
+    var hasR = vm.some(function (d) { return isOhmMode(d.mode); });
+    var measureOk = vm.length >= MIN_VALID_MEASURES && hasV && hasR;
+    if (!vm.length) reasons.push('沒有有效的量測紀錄，請先用電表找證據再作答');
     else {
-      if (!/V/.test(modes)) tips.push('沒有使用電壓檔量測');
-      if (!/Ω|K/.test(modes)) tips.push('沒有使用電阻檔量測');
+      if (vm.length < MIN_VALID_MEASURES) reasons.push('有效量測不足 ' + MIN_VALID_MEASURES + ' 筆');
+      if (!hasV) reasons.push('沒有使用電壓檔量測');
+      if (!hasR) reasons.push('沒有使用電阻檔量測');
     }
-    return tips;
+    var total = (r.score && typeof r.score.total === 'number') ? r.score.total : 0;
+    var scoreOk = total >= PASS_SCORE;
+    if (!scoreOk) reasons.push('總分未達 ' + PASS_SCORE + ' 分');
+    return { pass: diagnosisOk && wiringOk && measureOk && scoreOk, reasons: reasons,
+      checks: { diagnosis: diagnosisOk, wiring: wiringOk, measure: measureOk, score: scoreOk, validMeasures: vm.length } };
   }
+  function examFeedback(r) { return passGate(r).reasons; }
 
   return { score: score, checkWiring: checkWiring, CLOSE_PAIRS: CLOSE_PAIRS,
-    priorAttempts: priorAttempts, recordAttempt: recordAttempt, examFeedback: examFeedback };
+    priorAttempts: priorAttempts, recordAttempt: recordAttempt, examFeedback: examFeedback,
+    passGate: passGate, validMeasures: validMeasures, PASS_SCORE: PASS_SCORE };
 })();

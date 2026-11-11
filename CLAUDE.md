@@ -7,7 +7,7 @@
 - 架構與規格：各單元 `exam_bank.js`＋本檔工具清單
 
 ## 工作模式
-- **繼續開發**：直接說要做的功能 → 改完驗證（`node --test tests/regression.test.cjs tests/gas.test.cjs`；瀏覽器驗收見 `tests/README.md`）→ 等指示 commit
+- **繼續開發**：直接說要做的功能 → 改完驗證（`node --test tests/regression.test.cjs tests/gas.test.cjs tests/csv.test.cjs`；瀏覽器驗收見 `tests/README.md`）→ 等指示 commit
 - **結束工作**：說「**收工**」→ commit（push 需先設 remote 且 `gh auth login` 有效）
 - **接續工作**：說「**開工**」→ 讀工作筆記、報告上次進度
 - **本機測試**：`python -m http.server 8000`（專案根目錄）→ http://localhost:8000/
@@ -18,7 +18,8 @@
 - 起動系統模擬：`units/start/index.html`＋`units/start/app-start.js`
 - 教師端：`teacher.html`（成績／調分／核章／雷達／發證）　驗證頁：`verify.html`
 - 雲端教師端：`gas/`（教師登入後匯入提交檔，部署說明 `gas/README.md`）；本機設定教學 `cloud-setup.html`
-- 共用：`shared/js/{config,logger,oem,assessment}.js`、`units/{horn,start}/exam_bank.js`
+- 共用：`shared/js/{config,logger,oem,assessment,submission}.js`、`units/{horn,start}/exam_bank.js`（submission.js：學生成績檔簽章與下載）
+- 雲端教師端另有：學生名單與 6 碼代碼、成績檔（CSV）檢查與匯入（`gas/Code.gs`、`gas/Teacher.html`）
 
 ## 🔒 安全規則（不可違反）
 1. `.env` 或任何含 API Key 的檔案**絕對不能 commit**

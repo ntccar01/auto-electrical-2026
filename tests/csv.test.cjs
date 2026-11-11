@@ -1,0 +1,89 @@
+// 學生端成績檔（shared/js/submission.js）與雲端匯入（gas/Code.gs）的端對端契約測試。
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { makeGAS } = require('./gas-helpers.cjs');
+
+function client() {
+  const ctx = { console, Date, JSON, Math, Object, Array, String, Number, Uint8Array, TextEncoder, btoa, crypto: globalThis.crypto };
+  ctx.window = ctx; vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../shared/js/submission.js'), 'utf8'), ctx, { filename: 'submission.js' });
+  return ctx.NTC_SUBMIT;
+}
+function record(over = {}) {
+  return Object.assign({ recordId: 'R-csv-1', sid: 'S-csv', unit: 'horn', mode: 'exam', cls: '汽一甲', seat: '12', semester: '115-1', paper: 'A',
+    faultConfigId: 'HORN-S-04', archivedAt: '2026-11-11T02:35:00.000Z',
+    summary: { score: 78, pass: true, multi: false, attempt: 2, level: 'standard', diagnosisCorrect: true, parts: { '結果正確': 40, '一次繳交': 5 } } }, over);
+}
+const asFile = (f, name) => ({ name: name || f.filename, text: f.text });
+
+test('codes: teacher-generated codes pass the client check digit and typos are caught', () => {
+  const h = makeGAS(), S = client();
+  const { created } = h.ctx.createRoster('汽一甲', 1, 40);
+  assert.equal(created.length, 40);
+  for (const c of created) { assert.match(c.code, /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}$/); assert.equal(S.validCode(c.code), true); assert.equal(S.validCode(c.code.toLowerCase()), true); }
+  const code = created[0].code, swapped = code.slice(0, 2) + (code[2] === 'A' ? 'B' : 'A') + code.slice(3);
+  assert.equal(S.validCode(swapped), false);
+  assert.equal(new Set(created.map(c => c.code)).size > 35, true, 'codes should be random');
+  const stored = JSON.stringify([...h.sheets.get('NTC_Roster').data]);
+  assert.ok(!stored.includes(code), 'roster must not store the code itself');
+});
+
+test('roster: creation skips existing seats, reset replaces the code, and all roster calls are teacher-only', () => {
+  const h = makeGAS();
+  const first = h.ctx.createRoster('汽一甲', 1, 3); const again = h.ctx.createRoster('汽一甲', 1, 5);
+  assert.equal(again.created.length, 2); assert.deepEqual(Array.from(again.skipped), ['1', '2', '3']);
+  const reset = h.ctx.resetCode('汽一甲', '2'); assert.notEqual(reset.code, first.created[1].code);
+  assert.equal(h.ctx.listRoster('汽一甲').length, 5);
+  assert.throws(() => h.ctx.createRoster('汽一甲', 1, 200), /最多/);
+  h.setEmail('student@example.invalid');
+  for (const [m, a] of [['createRoster', ['X', 1, 2]], ['resetCode', ['X', '1']], ['listRoster', ['X']], ['previewCsv', [[]]], ['importCsv', [[]]]]) assert.throws(() => h.ctx[m](...a), /無教師權限/);
+});
+
+test('csv: signed file verifies, edits are detected, wrong code fails, unsigned needs teacher opt-in, duplicates skip', async () => {
+  const h = makeGAS(), S = client();
+  const code = h.ctx.createRoster('汽一甲', 12, 12).created[0].code;
+  const good = await S.buildCsv(record(), { diagnosis: '繼電器線圈斷路' }, code);
+  assert.match(good.filename, /^汽一甲_12號_喇叭_A卷_\d{8}-\d{4}\.csv$/);
+  assert.ok(good.text.startsWith('﻿班級代號,座號'));
+
+  // 學生竄改「資料」欄中的分數 → 驗證失敗
+  const tamperedText = (() => {
+    const data = good.text.split('\r\n')[1].split(',').at(-2);
+    const json = JSON.parse(Buffer.from(data, 'base64').toString('utf8')); json.record.summary.score = 100;
+    return good.text.replace(data, Buffer.from(JSON.stringify(json)).toString('base64'));
+  })();
+  const wrongCode = await S.buildCsv(record({ recordId: 'R-csv-2' }), {}, code === 'ABCDEJ' ? 'ABCDEK' : 'ABCDEJ');
+  const unsigned = await S.buildCsv(record({ recordId: 'R-csv-3' }), {}, '');
+  const practice = await S.buildCsv(record({ recordId: 'R-csv-4', mode: 'practice' }), {}, code);
+  const other = await S.buildCsv(record({ recordId: 'R-csv-5', seat: '13' }), {}, code); // 用自己的代碼簽別人的座號
+
+  const files = [asFile(good), asFile({ filename: 'edited.csv', text: tamperedText }), asFile(wrongCode, 'wrong.csv'), asFile(unsigned, 'unsigned.csv'), asFile(practice, 'practice.csv'), asFile(other, 'other.csv'), { name: 'junk.csv', text: 'a,b\n1,2' }];
+  const preview = h.ctx.previewCsv(files, '');
+  assert.deepEqual(Array.from(preview, p => p.status), ['ok', 'tampered', 'tampered', 'unsigned', 'practice', 'noRoster', 'invalid']);
+  assert.ok(preview.every(p => !('record' in p)));
+  assert.equal(h.sheets.get('NTC_Grades').data.length, 1, 'preview must not write');
+
+  const res = h.ctx.importCsv(files, '', false);
+  assert.equal(res.imported, 1);
+  let rows = h.ctx.listRecords();
+  assert.equal(rows[0].recordId, 'R-csv-1'); assert.equal(rows[0].verify, 'ok'); assert.equal(rows[0].attempt, 2); assert.equal(rows[0].summary.score, 78);
+  assert.equal(rows[0].approved, undefined);
+
+  const res2 = h.ctx.importCsv(files, '', true);
+  assert.equal(res2.counts.duplicate, 1); assert.equal(res2.imported, 2); // unsigned + noRoster
+  rows = h.ctx.listRecords();
+  assert.deepEqual(Array.from(rows, r => r.verify).sort(), ['noRoster', 'ok', 'unsigned']);
+  assert.ok(!rows.some(r => r.recordId === 'R-csv-4'), 'practice records are never imported');
+  assert.ok(!JSON.stringify(rows).includes('繼電器線圈斷路'), 'student diagnosis text is not stored');
+});
+
+test('csv: Excel-style quoting and formula guard survive the round trip', async () => {
+  const h = makeGAS(), S = client();
+  const code = h.ctx.createRoster('汽一甲', 12, 12).created[0].code;
+  const f = await S.buildCsv(record(), { diagnosis: '=HYPERLINK("x"),含逗號' }, code);
+  assert.ok(f.text.includes('"\'=HYPERLINK(""x""),含逗號"'));
+  assert.equal(h.ctx.previewCsv([asFile(f)], '')[0].status, 'ok');
+});

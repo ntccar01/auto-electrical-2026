@@ -5,10 +5,10 @@
 在專案根目錄執行（Node.js 22 或更新）：
 
 ```powershell
-node --test tests/regression.test.cjs tests/gas.test.cjs
+node --test tests/regression.test.cjs tests/gas.test.cjs tests/csv.test.cjs
 ```
 
-涵蓋兩單元完整／缺線／空配線評分、零分封存、新考試與重繳 ID、舊資料相容、姓名排除、起動控制與主電源故障，以及 GAS 的身分驗證、整批匯入、去重、核章鎖定、學期與證書簽章。
+涵蓋兩單元完整／缺線／空配線評分、零分封存、新考試與重繳 ID、舊資料相容、姓名排除、起動控制與主電源故障，以及 GAS 的身分驗證、整批匯入、去重、核章鎖定、學期與證書簽章。另含考評及格門檻、重考次數累計，以及 csv.test.cjs：學生端 submission.js 產生的簽章成績檔交給 Code.gs 驗證（驗證通過、內容被修改、代碼錯誤、冒用他人座號、未簽章、練習紀錄、重複）。
 
 ## 真實瀏覽器驗收
 
@@ -18,6 +18,8 @@ node --test tests/regression.test.cjs tests/gas.test.cjs
 node tests/browser.cjs
 ```
 
+沒有 Edge 時可改用 Chrome：`$env:BROWSER_CHANNEL='chrome'; node tests/browser.cjs`。
+
 若使用 Codex 隨附套件，可先設定：
 
 ```powershell
@@ -25,7 +27,7 @@ $env:NODE_PATH='C:/Users/user/.cache/codex-runtimes/codex-primary-runtime/depend
 node tests/browser.cjs
 ```
 
-browser.cjs 啟動隨機 localhost 連接埠、使用全新的隔離瀏覽器內容、以 TEST_A 等虛構資料操作，結束後關閉伺服器與瀏覽器。驗收包含配線、刪線、電表拖曳、OEM、考評、CSV／JSON 匯出、教師篩選／調分／核章、本機證書、雲端教師頁、學生證書分享連結／遮罩查驗／列印、平板觸控與手機版面。Google 服務在此由本機 mock 取代，不代表實際 Google OAuth 或資料已寫入雲端。
+browser.cjs 啟動隨機 localhost 連接埠、使用全新的隔離瀏覽器內容、以 TEST_A 等虛構資料操作，結束後關閉伺服器與瀏覽器。驗收包含配線、刪線、電表拖曳、OEM、考評、CSV／JSON 匯出、教師篩選／調分／核章、本機證書、雲端教師頁、學生證書分享連結／遮罩查驗／列印、平板觸控與手機版面，以及名單代碼、學生簽章成績檔下載與教師 CSV 檢查匯入。Google 服務在此由本機 mock 取代，不代表實際 Google OAuth 或資料已寫入雲端。
 
 截圖與下載檔寫在 test-results/，已排除 Git。tests/helpers.cjs 與 gas-helpers.cjs 為測試環境，不應被部署為學生端或 Apps Script 生產檔。
 

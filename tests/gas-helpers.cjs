@@ -15,7 +15,11 @@ function makeGAS() {
     PropertiesService:{getScriptProperties:()=>({getProperty:k=>properties.get(k)||null,setProperty:(k,v)=>properties.set(k,v)})},
     SpreadsheetApp:{openById:()=>{sheetAccess++;return book;}},
     LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},
-    Utilities:{getUuid:()=>crypto.randomUUID(),computeHmacSha256Signature:(raw,key)=>Array.from(crypto.createHmac('sha256',key).update(raw).digest()),base64EncodeWebSafe:bytes=>Buffer.from(bytes).toString('base64url')},
+    Utilities:{getUuid:()=>crypto.randomUUID(),computeHmacSha256Signature:(raw,key)=>Array.from(crypto.createHmac('sha256',key).update(raw).digest()).map(b=>b>127?b-256:b),base64EncodeWebSafe:bytes=>Buffer.from(bytes.map(b=>b<0?b+256:b)).toString('base64url'),
+      DigestAlgorithm:{SHA_256:'sha256'},Charset:{UTF_8:'utf8'},
+      computeDigest:(alg,value)=>Array.from(crypto.createHash(alg).update(value,'utf8').digest()).map(b=>b>127?b-256:b),
+      base64Decode:text=>{if(!/^[A-Za-z0-9+/=]*$/.test(text))throw new Error('Could not decode string.');return Array.from(Buffer.from(text,'base64')).map(b=>b>127?b-256:b);},
+      newBlob:bytes=>({getDataAsString:()=>Buffer.from(bytes.map(b=>b<0?b+256:b)).toString('utf8')})},
     HtmlService:{createHtmlOutputFromFile:file=>({file,setTitle(title){this.title=title;return this;}}),createTemplateFromFile:file=>({file,certificateId:'',evaluate(){return {file,certificateId:this.certificateId,setTitle(title){this.title=title;return this;}};}})}
   };
   vm.createContext(ctx);vm.runInContext(fs.readFileSync(path.join(__dirname,'../gas/Code.gs'),'utf8'),ctx,{filename:'Code.gs'});

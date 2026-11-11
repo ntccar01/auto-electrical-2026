@@ -356,8 +356,8 @@
             else { resultTitle.textContent = "❌ 診斷未完全正確"; resultTitle.className = "result-fail"; resultText.textContent = "故障或證據有缺漏，請看明細。"; }
             const rOk = window.NTC_LOG ? NTC_LOG.count('repair_ok') : 0;
             const rMiss = window.NTC_LOG ? NTC_LOG.count('repair_miss') : 0;
-            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>找出的故障：</strong>${list(ev.checked)}${(isAssessmentMode && !ev.pass) ? '' : `<br><strong>正確故障：</strong><span style="color:red">${list(ev.correct)}</span>`}<br><strong>量測證據：</strong>${ev.evd.length} 點（命中關鍵 ${ev.evHits.length}）<br><strong>維修紀錄：</strong>成功 ${rOk}／試誤 ${rMiss}`;
-            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: (isAssessmentMode && !ev.pass) ? '（通過後顯示）' : list(ev.correct), answerHidden: isAssessmentMode && !ev.pass };
+            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>找出的故障：</strong>${list(ev.checked)}${isAssessmentMode ? '' : `<br><strong>正確故障：</strong><span style="color:red">${list(ev.correct)}</span>`}<br><strong>量測證據：</strong>${ev.evd.length} 點（命中關鍵 ${ev.evHits.length}）<br><strong>維修紀錄：</strong>成功 ${rOk}／試誤 ${rMiss}`;
+            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: isAssessmentMode ? '（通過後顯示）' : list(ev.correct), answerLabel: list(ev.correct), answerHidden: isAssessmentMode, diagnosisCorrect: ev.pass };
             finishSubmit({ choice: ev.checked.join('+'), correct: ev.pass });
         }
         function finishSubmit(extra) {
@@ -374,8 +374,15 @@
                 lastResultData.attemptNo = lastResultData.resubmits + 1;
                 if (isAssessmentMode && window.ASSESS && ASSESS.recordAttempt) ASSESS.recordAttempt(_actx, lastResultData.level);
                 if (window.ASSESS && typeof ASSESS.score === 'function') lastResultData.score = ASSESS.score(lastResultData);
+                if (isAssessmentMode && window.ASSESS && ASSESS.passGate) {
+                    const gate = ASSESS.passGate(lastResultData);
+                    lastResultData.isPass = gate.pass;
+                    lastResultData.gateReasons = gate.reasons;
+                    lastResultData.gateChecks = gate.checks;
+                    if (gate.pass) { lastResultData.correctFault = lastResultData.answerLabel; lastResultData.answerHidden = false; }
+                }
                 NTC_LOG.log('diagnosis_submit', Object.assign({ measureCount: lastResultData.measureCount, wireCount: lastResultData.wireCount }, extra || {}));
-                const archived = NTC_LOG.archive({ pass: !!lastResultData.isPass, attempt: lastResultData.attemptNo, score: lastResultData.score ? lastResultData.score.total : null, parts: (lastResultData.score && lastResultData.score.parts) || null, multi: !!lastResultData.multi });
+                const archived = NTC_LOG.archive({ pass: !!lastResultData.isPass, attempt: lastResultData.attemptNo, diagnosisCorrect: !!lastResultData.diagnosisCorrect, level: lastResultData.level, score: lastResultData.score ? lastResultData.score.total : null, parts: (lastResultData.score && lastResultData.score.parts) || null, multi: !!lastResultData.multi });
                 lastResultData.recordId = archived ? archived.recordId : null;
             }
             if (lastResultData.score) {
@@ -385,11 +392,19 @@
             }
             if (isAssessmentMode) {
                 const _det = document.getElementById('resultDetails');
-                if (lastResultData.attemptNo) _det.innerHTML += `<br><br><strong>本卷今日第 ${lastResultData.attemptNo} 次繳交</strong>`;
-                if (!lastResultData.isPass && window.ASSESS && ASSESS.examFeedback) {
-                    const tips = ASSESS.examFeedback(lastResultData);
-                    _det.innerHTML += `<br><br><strong>未通過，請加強：</strong><br>` + tips.map(t => '・' + t).join('<br>') + `<br><span style="color:#7f8c8d">正確答案會在通過後顯示。</span>`;
+                const _title = document.getElementById('resultTitle'), _text = document.getElementById('resultText');
+                if (lastResultData.isPass) {
+                    _title.textContent = '🎉 通過！診斷正確'; _title.className = 'result-success';
+                    _text.textContent = '診斷正確，配線與量測都達到要求。';
+                    _det.innerHTML += `<br><br><strong>正確答案：</strong><span style="color:#c0392b">${lastResultData.answerLabel}</span>`;
+                } else {
+                    _title.textContent = lastResultData.diagnosisCorrect ? '⚠️ 診斷正確，但未達及格門檻' : '❌ 未通過';
+                    _title.className = 'result-fail';
+                    _text.textContent = '請依下方提示加強後再試一次。';
+                    const tips = lastResultData.gateReasons || [];
+                    _det.innerHTML += `<br><br><strong>未通過，請加強：</strong><br>` + tips.map(t => '・' + t).join('<br>') + `<br><span style="color:#7f8c8d">及格條件：配線完成、至少 2 筆有效量測（電壓與電阻檔都要用到）、診斷正確、總分 60 分以上。正確答案會在通過後顯示。</span>`;
                 }
+                if (lastResultData.attemptNo) _det.innerHTML += `<br><br><strong>本卷今日第 ${lastResultData.attemptNo} 次繳交</strong>`;
             }
             document.getElementById('quizModal').classList.add('hidden');
             document.getElementById('resultModal').classList.remove('hidden');
@@ -410,26 +425,19 @@
             
             const correctLabel = faultOptions.find(f => f.id === currentActiveFault).label;
             const userLabel = faultOptions.find(f => f.id === userChoice).label;
-            const hideAnswer = isAssessmentMode && !isCorrect;
+            const hideAnswer = isAssessmentMode;
             resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>您的答案：</strong>${userLabel}` + (hideAnswer ? '' : `<br><strong>正確答案：</strong><span style="color:red">${correctLabel}</span>`);
             
-            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: false, track: 'S', userDiagnosis: userLabel, correctFault: hideAnswer ? '（通過後顯示）' : correctLabel, answerHidden: hideAnswer, isPass: isCorrect };
+            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: false, track: 'S', userDiagnosis: userLabel, correctFault: hideAnswer ? '（通過後顯示）' : correctLabel, answerLabel: correctLabel, answerHidden: hideAnswer, diagnosisCorrect: isCorrect, isPass: isCorrect };
             finishSubmit({ choice: userChoice, correct: isCorrect });
         });
 
+        // 下載成績檔（2026-11-11）：含班級座號檔名與簽章，學生用通訊軟體交給老師，老師在雲端教師端匯入。
         function downloadCSV() {
-            if(!lastResultData) return;
-            const bom = "\uFEFF"; 
-            const header = "班級代號,座號,考生診斷,正確答案,結果\n";
-            const row = `${lastResultData.studentClass},${lastResultData.seatNumber},${lastResultData.userDiagnosis},${lastResultData.correctFault},${lastResultData.isPass ? '通過' : '未通過'}\n`;
-            const blob = new Blob([bom + header + row], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `診斷結果_${lastResultData.studentClass}_${lastResultData.seatNumber}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            if (!lastResultData) return;
+            const record = window.NTC_LOG ? NTC_LOG.history().find(r => r.recordId === lastResultData.recordId) : null;
+            if (!window.NTC_SUBMIT) { alert('成績檔元件未載入，請重新整理頁面。'); return; }
+            NTC_SUBMIT.downloadForTeacher(record, { diagnosis: lastResultData.userDiagnosis }).catch(e => alert('下載失敗：' + e.message));
         }
 
         function exportSubmission() {
@@ -556,6 +564,7 @@
             updateFlowAnimation(relayEnergized && switchOK);
             renderWireBreaks();
             updateMultimeterReading(relayEnergized);
+            logMeterSample();
         }
 
         // 配線段斷線視覺：在斷掉的學生配線上畫缺口徽章（練習模式才顯示，考評隱藏）
@@ -634,13 +643,21 @@
                     if (Math.sqrt(Math.pow(screenTipX - pX, 2) + Math.pow(screenTipY - pY, 2)) < 20) { probeContact[color] = p.getAttribute('data-id'); p.classList.add('probing'); }
                 });
             });
-            const _prR = probeContact._lr, _prB = probeContact._lb;
             runSimulation();
-            // 接觸組合改變才記一次量測事件（含當時檔位與讀值，避免拖曳洗版）
-            if (window.NTC_LOG && (probeContact.red !== _prR || probeContact.black !== _prB) && (probeContact.red || probeContact.black)) {
-                NTC_LOG.log('probe_measure', { red: probeContact.red, black: probeContact.black, mode: knobModes[currentModeIndex].label, reading: document.getElementById('meter-display').textContent, pressed: isButtonPressed });
-            }
-            probeContact._lr = probeContact.red; probeContact._lb = probeContact.black;
+        }
+        // 量測紀錄（2026-11-11）：探棒接觸、切換檔位、按下按鈕使讀值改變時都記一次；
+        // 內容相同不重複記錄。valid 表示插孔正確（紅棒 V/Ω、黑棒 COM），供及格門檻判定有效量測。
+        let lastMeterSig = '';
+        function logMeterSample() {
+            if (!window.NTC_LOG || !window.__ntcKnobReady) return;
+            if (!probeContact.red && !probeContact.black) { lastMeterSig = ''; return; }
+            const sample = { red: probeContact.red, black: probeContact.black, mode: knobModes[currentModeIndex].label,
+                reading: document.getElementById('meter-display').textContent, pressed: isButtonPressed,
+                valid: probeState.red.jack === 'volts' && probeState.black.jack === 'com' };
+            const sig = JSON.stringify(sample);
+            if (sig === lastMeterSig) return;
+            lastMeterSig = sig;
+            NTC_LOG.log('probe_measure', sample);
         }
         function updateMultimeterReading(relayEnergized) {
             const mode = knobModes[currentModeIndex];
@@ -660,7 +677,7 @@
                 if (r === -1) display.textContent = "1 ."; else if (r >= 1000) display.textContent = (r/1000).toFixed(2) + "k"; else display.textContent = r.toFixed(1);
             } else { display.textContent = "0.00"; }
         }
-        const meterSvg = document.getElementById('meterSvg'); const meterKnob = document.getElementById('meter-knob'); const meterDisplay = document.getElementById('meter-display'); const meterScalesGroup = document.getElementById('meter-scales'); const knobModes = [ { label: "OFF", angle: 0, type: 'off' }, { label: "2V", angle: -30, type: 'dcv' }, { label: "20V", angle: -50, type: 'dcv' }, { label: "200V", angle: -70, type: 'dcv' }, { label: "200Ω", angle: -100, type: 'res' }, { label: "2KΩ", angle: -120, type: 'res' }, { label: "200K", angle: -140, type: 'res' }, { label: "2M", angle: -160, type: 'res' }, { label: "2mA", angle: 22, type: 'amp' }, { label: "20mA", angle: 50, type: 'amp' }, { label: "200mA", angle: 78, type: 'amp' }, { label: "20A", angle: 106, type: 'amp' }, ]; let currentModeIndex = 0; function initMeterScales() { const radiusDot = 65; const radiusText = 82; knobModes.forEach((mode, index) => { const group = document.createElementNS("http://www.w3.org/2000/svg", "g"); group.setAttribute("class", "scale-group"); group.addEventListener("click", () => setMode(index)); const rad = (mode.angle - 90) * Math.PI / 180; const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle"); dot.setAttribute("cx", radiusDot * Math.cos(rad)); dot.setAttribute("cy", radiusDot * Math.sin(rad)); dot.setAttribute("r", 2.5); dot.setAttribute("class", "scale-tick"); group.appendChild(dot); const text = document.createElementNS("http://www.w3.org/2000/svg", "text"); text.setAttribute("x", radiusText * Math.cos(rad)); text.setAttribute("y", radiusText * Math.sin(rad)); text.setAttribute("class", "scale-label"); text.textContent = mode.label; text.setAttribute("transform", `rotate(${mode.angle}, ${radiusText * Math.cos(rad)}, ${radiusText * Math.sin(rad)})`); text.setAttribute("dy", "0.35em"); group.appendChild(text); meterScalesGroup.appendChild(group); }); } function setMode(index) { if (window.NTC_LOG && window.__ntcKnobReady) NTC_LOG.log('knob_change', { label: knobModes[index].label }); currentModeIndex = index; meterKnob.style.transition = "transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)"; meterKnob.style.transform = `translate(125px, 240px) rotate(${knobModes[index].angle}deg)`; updateMultimeterReading(false); } initMeterScales(); setMode(0); window.__ntcKnobReady = true; let selectedElement = null; let offset = { x: 0, y: 0 }; const jacks = { 'com': { x: 25+60, y: 20+370 }, 'volts': { x: 25+125, y: 20+370 }, 'amps': { x: 25+190, y: 20+370 } }; const probeState = { red: { plugId: 'plug-red-obj', tipId: 'tip-red-obj', wireId: 'wire-red', jack: null, plugX: 80, plugY: 470, x: 200, y: 470, angle: 0 }, black: { plugId: 'plug-black-obj', tipId: 'tip-black-obj', wireId: 'wire-black', jack: null, plugX: 50, plugY: 470, x: 230, y: 470, angle: 0 } }; function updateElementPosition(color) { const s = probeState[color]; const plug = document.getElementById(s.plugId); plug.setAttribute("transform", `translate(${s.plugX}, ${s.plugY})`); const tip = document.getElementById(s.tipId); tip.setAttribute("transform", `translate(${s.x}, ${s.y}) rotate(${s.angle})`); const wire = document.getElementById(s.wireId); const x1 = s.plugX; const y1 = s.plugY - 15; const rad = s.angle * Math.PI / 180; const tx = s.x + 40 * Math.sin(rad); const ty = s.y - 40 * Math.cos(rad); const cx = (x1 + tx) / 2; const cy = Math.max(y1, ty) + 50; wire.setAttribute('d', `M ${x1} ${y1} Q ${cx} ${cy} ${tx} ${ty}`); } updateElementPosition('red'); updateElementPosition('black'); function makeDraggable(elementId, type, color) { const elem = document.getElementById(elementId); elem.addEventListener('pointerdown', (e) => { e.preventDefault(); const CTM = meterSvg.getScreenCTM(); const mx = (e.clientX - CTM.e) / CTM.a; const my = (e.clientY - CTM.f) / CTM.d; if(type === 'tip') { offset.x = mx - probeState[color].x; offset.y = my - probeState[color].y; } else { offset.x = mx - probeState[color].plugX; offset.y = my - probeState[color].plugY; } selectedElement = { type: type, color: color, sx: e.clientX, sy: e.clientY, st: Date.now() }; elem.style.cursor = "grabbing"; }); } makeDraggable('plug-red-obj', 'plug', 'red'); makeDraggable('plug-black-obj', 'plug', 'black'); makeDraggable('tip-red-obj', 'tip', 'red'); makeDraggable('tip-black-obj', 'tip', 'black'); window.addEventListener('pointermove', (e) => { if (selectedElement) { e.preventDefault(); const CTM = meterSvg.getScreenCTM(); const mx = (e.clientX - CTM.e) / CTM.a; const my = (e.clientY - CTM.f) / CTM.d; const s = probeState[selectedElement.color]; if (selectedElement.type === 'tip') { s.x = mx - offset.x; s.y = my - offset.y; checkProbeContact(); } else { s.plugX = mx - offset.x; s.plugY = my - offset.y; s.jack = null; } updateElementPosition(selectedElement.color); } }); window.addEventListener('pointerup', (e) => { try { if (selectedElement) { const s = probeState[selectedElement.color]; const elem = document.getElementById(selectedElement.type === 'plug' ? s.plugId : s.tipId); elem.style.cursor = "grab"; if (selectedElement.type === 'plug') { const jacksAbs = { 'com': {x:85,y:390}, 'volts':{x:150,y:390}, 'amps':{x:215,y:390} }; const tipX = s.plugX; const tipY = s.plugY + 18; let snapped = false; for (const [key, pos] of Object.entries(jacksAbs)) { if (Math.sqrt(Math.pow(tipX - pos.x, 2) + Math.pow(tipY - pos.y, 2)) < 30) { s.plugX = pos.x; s.plugY = pos.y - 18; s.jack = key; snapped = true; break; } } if(!snapped) s.jack = null; updateElementPosition(selectedElement.color); runSimulation(); } if (selectedElement.type === 'tip' && Math.hypot(e.clientX - selectedElement.sx, e.clientY - selectedElement.sy) < 8 && (Date.now() - selectedElement.st) < 350) { s.angle = (s.angle + 15) % 360; updateElementPosition(selectedElement.color); checkProbeContact(); } } } catch(err) { console.error(err); } finally { selectedElement = null; } });
+        const meterSvg = document.getElementById('meterSvg'); const meterKnob = document.getElementById('meter-knob'); const meterDisplay = document.getElementById('meter-display'); const meterScalesGroup = document.getElementById('meter-scales'); const knobModes = [ { label: "OFF", angle: 0, type: 'off' }, { label: "2V", angle: -30, type: 'dcv' }, { label: "20V", angle: -50, type: 'dcv' }, { label: "200V", angle: -70, type: 'dcv' }, { label: "200Ω", angle: -100, type: 'res' }, { label: "2KΩ", angle: -120, type: 'res' }, { label: "200K", angle: -140, type: 'res' }, { label: "2M", angle: -160, type: 'res' }, { label: "2mA", angle: 22, type: 'amp' }, { label: "20mA", angle: 50, type: 'amp' }, { label: "200mA", angle: 78, type: 'amp' }, { label: "20A", angle: 106, type: 'amp' }, ]; let currentModeIndex = 0; function initMeterScales() { const radiusDot = 65; const radiusText = 82; knobModes.forEach((mode, index) => { const group = document.createElementNS("http://www.w3.org/2000/svg", "g"); group.setAttribute("class", "scale-group"); group.addEventListener("click", () => setMode(index)); const rad = (mode.angle - 90) * Math.PI / 180; const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle"); dot.setAttribute("cx", radiusDot * Math.cos(rad)); dot.setAttribute("cy", radiusDot * Math.sin(rad)); dot.setAttribute("r", 2.5); dot.setAttribute("class", "scale-tick"); group.appendChild(dot); const text = document.createElementNS("http://www.w3.org/2000/svg", "text"); text.setAttribute("x", radiusText * Math.cos(rad)); text.setAttribute("y", radiusText * Math.sin(rad)); text.setAttribute("class", "scale-label"); text.textContent = mode.label; text.setAttribute("transform", `rotate(${mode.angle}, ${radiusText * Math.cos(rad)}, ${radiusText * Math.sin(rad)})`); text.setAttribute("dy", "0.35em"); group.appendChild(text); meterScalesGroup.appendChild(group); }); } function setMode(index) { if (window.NTC_LOG && window.__ntcKnobReady) NTC_LOG.log('knob_change', { label: knobModes[index].label }); currentModeIndex = index; meterKnob.style.transition = "transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)"; meterKnob.style.transform = `translate(125px, 240px) rotate(${knobModes[index].angle}deg)`; updateMultimeterReading(false); logMeterSample(); } initMeterScales(); setMode(0); window.__ntcKnobReady = true; let selectedElement = null; let offset = { x: 0, y: 0 }; const jacks = { 'com': { x: 25+60, y: 20+370 }, 'volts': { x: 25+125, y: 20+370 }, 'amps': { x: 25+190, y: 20+370 } }; const probeState = { red: { plugId: 'plug-red-obj', tipId: 'tip-red-obj', wireId: 'wire-red', jack: null, plugX: 80, plugY: 470, x: 200, y: 470, angle: 0 }, black: { plugId: 'plug-black-obj', tipId: 'tip-black-obj', wireId: 'wire-black', jack: null, plugX: 50, plugY: 470, x: 230, y: 470, angle: 0 } }; function updateElementPosition(color) { const s = probeState[color]; const plug = document.getElementById(s.plugId); plug.setAttribute("transform", `translate(${s.plugX}, ${s.plugY})`); const tip = document.getElementById(s.tipId); tip.setAttribute("transform", `translate(${s.x}, ${s.y}) rotate(${s.angle})`); const wire = document.getElementById(s.wireId); const x1 = s.plugX; const y1 = s.plugY - 15; const rad = s.angle * Math.PI / 180; const tx = s.x + 40 * Math.sin(rad); const ty = s.y - 40 * Math.cos(rad); const cx = (x1 + tx) / 2; const cy = Math.max(y1, ty) + 50; wire.setAttribute('d', `M ${x1} ${y1} Q ${cx} ${cy} ${tx} ${ty}`); } updateElementPosition('red'); updateElementPosition('black'); function makeDraggable(elementId, type, color) { const elem = document.getElementById(elementId); elem.addEventListener('pointerdown', (e) => { e.preventDefault(); const CTM = meterSvg.getScreenCTM(); const mx = (e.clientX - CTM.e) / CTM.a; const my = (e.clientY - CTM.f) / CTM.d; if(type === 'tip') { offset.x = mx - probeState[color].x; offset.y = my - probeState[color].y; } else { offset.x = mx - probeState[color].plugX; offset.y = my - probeState[color].plugY; } selectedElement = { type: type, color: color, sx: e.clientX, sy: e.clientY, st: Date.now() }; elem.style.cursor = "grabbing"; }); } makeDraggable('plug-red-obj', 'plug', 'red'); makeDraggable('plug-black-obj', 'plug', 'black'); makeDraggable('tip-red-obj', 'tip', 'red'); makeDraggable('tip-black-obj', 'tip', 'black'); window.addEventListener('pointermove', (e) => { if (selectedElement) { e.preventDefault(); const CTM = meterSvg.getScreenCTM(); const mx = (e.clientX - CTM.e) / CTM.a; const my = (e.clientY - CTM.f) / CTM.d; const s = probeState[selectedElement.color]; if (selectedElement.type === 'tip') { s.x = mx - offset.x; s.y = my - offset.y; checkProbeContact(); } else { s.plugX = mx - offset.x; s.plugY = my - offset.y; s.jack = null; } updateElementPosition(selectedElement.color); } }); window.addEventListener('pointerup', (e) => { try { if (selectedElement) { const s = probeState[selectedElement.color]; const elem = document.getElementById(selectedElement.type === 'plug' ? s.plugId : s.tipId); elem.style.cursor = "grab"; if (selectedElement.type === 'plug') { const jacksAbs = { 'com': {x:85,y:390}, 'volts':{x:150,y:390}, 'amps':{x:215,y:390} }; const tipX = s.plugX; const tipY = s.plugY + 18; let snapped = false; for (const [key, pos] of Object.entries(jacksAbs)) { if (Math.sqrt(Math.pow(tipX - pos.x, 2) + Math.pow(tipY - pos.y, 2)) < 30) { s.plugX = pos.x; s.plugY = pos.y - 18; s.jack = key; snapped = true; break; } } if(!snapped) s.jack = null; updateElementPosition(selectedElement.color); runSimulation(); } if (selectedElement.type === 'tip' && Math.hypot(e.clientX - selectedElement.sx, e.clientY - selectedElement.sy) < 8 && (Date.now() - selectedElement.st) < 350) { s.angle = (s.angle + 15) % 360; updateElementPosition(selectedElement.color); checkProbeContact(); } } } catch(err) { console.error(err); } finally { selectedElement = null; } });
         const circuitSvg = document.getElementById('circuitSvg'); const wireLayer = document.getElementById('wire-layer'); const points = document.querySelectorAll('.conn-point'); const btnGroup = document.getElementById('button'); const btnHitbox = document.getElementById('btn-hitbox'); let isDrawing = false; let currentPath = []; let previewLine = null; let startNodeId = null; let connections = []; function getCircuitMousePos(evt) { const CTM = circuitSvg.getScreenCTM(); return { x: (evt.clientX - CTM.e) / CTM.a, y: (evt.clientY - CTM.f) / CTM.d }; } function getPointPosition(circle) { const CTM = circuitSvg.getScreenCTM(); const r = circle.getBoundingClientRect(); return { x: (r.left + r.width/2 - CTM.e) / CTM.a, y: (r.top + r.height/2 - CTM.f) / CTM.d }; } function applySmartSnap(prevPoint, currPoint) { if (!prevPoint) return currPoint; const dx = currPoint.x - prevPoint.x, dy = currPoint.y - prevPoint.y; const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI); if (angle < 5 || angle > 175) return { x: currPoint.x, y: prevPoint.y }; if (Math.abs(angle - 90) < 5) return { x: prevPoint.x, y: currPoint.y }; return currPoint; }
         points.forEach(point => { point.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); if (deleteMode) return; const pos = getPointPosition(point); const pid = point.getAttribute('data-id'); if (!isDrawing) { isDrawing = true; startNodeId = pid; currentPath = [pos]; previewLine = document.createElementNS("http://www.w3.org/2000/svg", "polyline"); previewLine.setAttribute("class", "wire-preview"); previewLine.setAttribute("points", `${pos.x},${pos.y} ${pos.x},${pos.y}`); wireLayer.appendChild(previewLine); point.classList.add('active'); } else { if (pid === startNodeId) { isDrawing = false; currentPath = []; startNodeId = null; if (previewLine) { previewLine.remove(); previewLine = null; } document.querySelectorAll('.conn-point.active').forEach(p => p.classList.remove('active')); return; } currentPath.push(pos); connections.push({ start: startNodeId, end: pid, points: currentPath.map(p => ({x: p.x, y: p.y})) }); if (window.NTC_LOG) NTC_LOG.log('wire_connect', { start: startNodeId, end: pid }); const realWire = document.createElementNS("http://www.w3.org/2000/svg", "polyline"); realWire.setAttribute("class", "wire"); const pointsStr = currentPath.map(p => `${p.x},${p.y}`).join(' '); realWire.setAttribute("points", pointsStr); realWire.setAttribute("data-idx", connections.length - 1); wireLayer.appendChild(realWire); isDrawing = false; currentPath = []; startNodeId = null; if (previewLine) { previewLine.remove(); previewLine = null; } document.querySelectorAll('.conn-point.active').forEach(p => p.classList.remove('active')); runSimulation(); } }); });
         circuitSvg.addEventListener('pointerdown', (e) => { if (isDrawing) { let mp = getCircuitMousePos(e); mp = applySmartSnap(currentPath[currentPath.length - 1], mp); currentPath.push(mp); if (previewLine) previewLine.setAttribute("points", currentPath.map(p => `${p.x},${p.y}`).join(' ') + ` ${mp.x},${mp.y}`); } });

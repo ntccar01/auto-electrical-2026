@@ -506,8 +506,8 @@
             else { resultTitle.textContent = "❌ 診斷未完全正確"; resultTitle.className = "result-fail"; resultText.textContent = "故障或證據有缺漏，請看明細。"; }
             const rOk = window.NTC_LOG ? NTC_LOG.count('repair_ok') : 0;
             const rMiss = window.NTC_LOG ? NTC_LOG.count('repair_miss') : 0;
-            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>找出的故障：</strong>${list(ev.checked)}${(isAssessmentMode && !ev.pass) ? '' : `<br><strong>正確故障：</strong><span style="color:red">${list(ev.correct)}</span>`}<br><strong>量測證據：</strong>${ev.evd.length} 點（命中關鍵 ${ev.evHits.length}）<br><strong>維修紀錄：</strong>成功 ${rOk}／試誤 ${rMiss}`;
-            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, evidenceStages: repairStageDoneCount(), finalConfirmed: repairProgress.finalConfirmed, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: (isAssessmentMode && !ev.pass) ? '（通過後顯示）' : list(ev.correct), answerHidden: isAssessmentMode && !ev.pass };
+            resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>找出的故障：</strong>${list(ev.checked)}${isAssessmentMode ? '' : `<br><strong>正確故障：</strong><span style="color:red">${list(ev.correct)}</span>`}<br><strong>量測證據：</strong>${ev.evd.length} 點（命中關鍵 ${ev.evHits.length}）<br><strong>維修紀錄：</strong>成功 ${rOk}／試誤 ${rMiss}`;
+            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: true, configId: item.id || '', track: 'C', userFaults: ev.checked, correctFaults: ev.correct, faultHits: ev.hits.length, faultExtras: ev.extras.length, evidence: ev.evd, evidenceHits: ev.evHits.length, repairOk: rOk, repairMiss: rMiss, evidenceStages: repairStageDoneCount(), finalConfirmed: repairProgress.finalConfirmed, isPass: ev.pass, userDiagnosis: list(ev.checked), correctFault: isAssessmentMode ? '（通過後顯示）' : list(ev.correct), answerLabel: list(ev.correct), answerHidden: isAssessmentMode, diagnosisCorrect: ev.pass };
             finishSubmit({ choice: ev.checked.join('+'), correct: ev.pass });
         }
         function finishSubmit(extra) {
@@ -524,8 +524,15 @@
                 lastResultData.attemptNo = lastResultData.resubmits + 1;
                 if (isAssessmentMode && window.ASSESS && ASSESS.recordAttempt) ASSESS.recordAttempt(_actx, lastResultData.level);
                 if (window.ASSESS && typeof ASSESS.score === 'function') lastResultData.score = ASSESS.score(lastResultData);
+                if (isAssessmentMode && window.ASSESS && ASSESS.passGate) {
+                    const gate = ASSESS.passGate(lastResultData);
+                    lastResultData.isPass = gate.pass;
+                    lastResultData.gateReasons = gate.reasons;
+                    lastResultData.gateChecks = gate.checks;
+                    if (gate.pass) { lastResultData.correctFault = lastResultData.answerLabel; lastResultData.answerHidden = false; }
+                }
                 NTC_LOG.log('diagnosis_submit', Object.assign({ measureCount: lastResultData.measureCount, wireCount: lastResultData.wireCount }, extra || {}));
-                const archived = NTC_LOG.archive({ pass: !!lastResultData.isPass, attempt: lastResultData.attemptNo, score: lastResultData.score ? lastResultData.score.total : null, parts: (lastResultData.score && lastResultData.score.parts) || null, multi: !!lastResultData.multi });
+                const archived = NTC_LOG.archive({ pass: !!lastResultData.isPass, attempt: lastResultData.attemptNo, diagnosisCorrect: !!lastResultData.diagnosisCorrect, level: lastResultData.level, score: lastResultData.score ? lastResultData.score.total : null, parts: (lastResultData.score && lastResultData.score.parts) || null, multi: !!lastResultData.multi });
                 lastResultData.recordId = archived ? archived.recordId : null;
             }
             if (lastResultData.score) {
@@ -535,11 +542,19 @@
             }
             if (isAssessmentMode) {
                 const _det = document.getElementById('resultDetails');
-                if (lastResultData.attemptNo) _det.innerHTML += `<br><br><strong>本卷今日第 ${lastResultData.attemptNo} 次繳交</strong>`;
-                if (!lastResultData.isPass && window.ASSESS && ASSESS.examFeedback) {
-                    const tips = ASSESS.examFeedback(lastResultData);
-                    _det.innerHTML += `<br><br><strong>未通過，請加強：</strong><br>` + tips.map(t => '・' + t).join('<br>') + `<br><span style="color:#7f8c8d">正確答案會在通過後顯示。</span>`;
+                const _title = document.getElementById('resultTitle'), _text = document.getElementById('resultText');
+                if (lastResultData.isPass) {
+                    _title.textContent = '🎉 通過！診斷正確'; _title.className = 'result-success';
+                    _text.textContent = '診斷正確，配線與量測都達到要求。';
+                    _det.innerHTML += `<br><br><strong>正確答案：</strong><span style="color:#c0392b">${lastResultData.answerLabel}</span>`;
+                } else {
+                    _title.textContent = lastResultData.diagnosisCorrect ? '⚠️ 診斷正確，但未達及格門檻' : '❌ 未通過';
+                    _title.className = 'result-fail';
+                    _text.textContent = '請依下方提示加強後再試一次。';
+                    const tips = lastResultData.gateReasons || [];
+                    _det.innerHTML += `<br><br><strong>未通過，請加強：</strong><br>` + tips.map(t => '・' + t).join('<br>') + `<br><span style="color:#7f8c8d">及格條件：配線完成、至少 2 筆有效量測（電壓與電阻檔都要用到）、診斷正確、總分 60 分以上。正確答案會在通過後顯示。</span>`;
                 }
+                if (lastResultData.attemptNo) _det.innerHTML += `<br><br><strong>本卷今日第 ${lastResultData.attemptNo} 次繳交</strong>`;
             }
             document.getElementById('quizModal').classList.add('hidden');
             document.getElementById('resultModal').classList.remove('hidden');
@@ -560,26 +575,19 @@
             
             const correctLabel = faultOptions.find(f => f.id === currentActiveFault).label;
             const userLabel = faultOptions.find(f => f.id === userChoice).label;
-            const hideAnswer = isAssessmentMode && !isCorrect;
+            const hideAnswer = isAssessmentMode;
             resultDetails.innerHTML = `<strong>考生：</strong>${studentInfo.class}（${studentInfo.seat}）<br><strong>您的答案：</strong>${userLabel}` + (hideAnswer ? '' : `<br><strong>正確答案：</strong><span style="color:red">${correctLabel}</span>`);
             
-            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: false, track: 'S', userDiagnosis: userLabel, correctFault: hideAnswer ? '（通過後顯示）' : correctLabel, answerHidden: hideAnswer, isPass: isCorrect };
+            lastResultData = { studentClass: studentInfo.class, seatNumber: studentInfo.seat, multi: false, track: 'S', userDiagnosis: userLabel, correctFault: hideAnswer ? '（通過後顯示）' : correctLabel, answerLabel: correctLabel, answerHidden: hideAnswer, diagnosisCorrect: isCorrect, isPass: isCorrect };
             finishSubmit({ choice: userChoice, correct: isCorrect });
         });
 
+        // 下載成績檔（2026-11-11）：含班級座號檔名與簽章，學生用通訊軟體交給老師，老師在雲端教師端匯入。
         function downloadCSV() {
-            if(!lastResultData) return;
-            const bom = "\uFEFF"; 
-            const header = "班級代號,座號,考生診斷,正確答案,結果\n";
-            const row = `${lastResultData.studentClass},${lastResultData.seatNumber},${lastResultData.userDiagnosis},${lastResultData.correctFault},${lastResultData.isPass ? '通過' : '未通過'}\n`;
-            const blob = new Blob([bom + header + row], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `診斷結果_${lastResultData.studentClass}_${lastResultData.seatNumber}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            if (!lastResultData) return;
+            const record = window.NTC_LOG ? NTC_LOG.history().find(r => r.recordId === lastResultData.recordId) : null;
+            if (!window.NTC_SUBMIT) { alert('成績檔元件未載入，請重新整理頁面。'); return; }
+            NTC_SUBMIT.downloadForTeacher(record, { diagnosis: lastResultData.userDiagnosis }).catch(e => alert('下載失敗：' + e.message));
         }
 
         function exportSubmission() {

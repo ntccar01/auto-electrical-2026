@@ -105,6 +105,7 @@
         <span id="statusMsg">請連接線路進行測試。</span>
     </div>
 
+    <p id="meterSafety" role="alert" class="meter-safety hidden"></p>
     <div class="main-layout">
         <div class="circuit-area">
             <svg id="circuitSvg" width="800" height="500" viewBox="0 0 800 500">
@@ -140,6 +141,7 @@
             </svg>
             <button id="clearBtn" class="clear-btn">清除連線</button>
             <button id="deleteWireBtn" class="del-btn" onclick="toggleDeleteMode()">刪除單線</button>
+            <button id="isolateBtn" class="iso-btn" onclick="toggleBatteryIsolation()" title="量電阻前先斷電，學生配線會保留">🔌 拆下電瓶負極</button>
             <div class="controls-container">
                 <button id="faultBtn" class="action-btn btn-fault hidden">故障設定</button>
                 <button id="toExamBtn" class="action-btn btn-switch hidden" onclick="switchModeToExam()">切換至考評模式</button>

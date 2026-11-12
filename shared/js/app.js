@@ -102,7 +102,9 @@
             if (window.OEM) OEM.setExam(isExam);
         }
 
+        let batteryIsolated = false; // 電瓶負極拆離狀態（宣告於前，避免載入時引用順序問題）
         function resetSimulation() {
+            batteryIsolated = false; if (typeof syncIsolationButton === 'function') syncIsolationButton();
             const wireLayer = document.getElementById('wire-layer');
             wireLayer.innerHTML = '';
             connections = [];
@@ -405,6 +407,7 @@
                     _det.innerHTML += `<br><br><strong>未通過，請加強：</strong><br>` + tips.map(t => '・' + t).join('<br>') + `<br><span style="color:#7f8c8d">及格條件：配線完成、至少 2 筆有效量測（電壓與電阻檔都要用到）、診斷正確、總分 60 分以上。正確答案會在通過後顯示。</span>`;
                 }
                 if (lastResultData.attemptNo) _det.innerHTML += `<br><br><strong>本卷今日第 ${lastResultData.attemptNo} 次繳交</strong>`;
+                if (batteryIsolated) _det.innerHTML += `<br><span style="color:#b9770e">提醒：交卷時電瓶負極尚未接回。實車作業修復後請接回電瓶並復驗功能。</span>`;
             }
             document.getElementById('quizModal').classList.add('hidden');
             document.getElementById('resultModal').classList.remove('hidden');
@@ -470,15 +473,19 @@
             buildGraph: function(buttonPressed, relayClosed) {
                 let adj = {};
                 const addEdge = (u, v) => { if(!adj[u]) adj[u]=[]; if(!adj[v]) adj[v]=[]; adj[u].push(v); adj[v].push(u); };
-                connections.forEach(conn => { if (!isConnBroken(conn)) addEdge(conn.start, conn.end); });
+                const iso = batteryIsolated;
+                connections.forEach(conn => { if (!isConnBroken(conn) && !(iso && (conn.start === 'bat_neg' || conn.end === 'bat_neg'))) addEdge(conn.start, conn.end); });
                 if (faultState.fuse_link === 'Normal') addEdge('fuse_link_in', 'fuse_link_out');
                 if (faultState.fuse === 'Normal') addEdge('fuse_in', 'fuse_out'); 
                 if(relayClosed && faultState.relay_switch === 'Normal') addEdge('relay_30', 'relay_87');
                 if(buttonPressed && faultState.btn_switch === 'Normal') addEdge('btn_in', 'btn_out');
-                for (let gi = 1; gi < GROUND_NET.length; gi++) addEdge(GROUND_NET[0], GROUND_NET[gi]);
+                // 拆離電瓶負極時，車身搭鐵各點仍互通，但不再接到電瓶負極
+                if (iso) { for (let gi = 2; gi < GROUND_NET.length; gi++) addEdge(GROUND_NET[1], GROUND_NET[gi]); }
+                else for (let gi = 1; gi < GROUND_NET.length; gi++) addEdge(GROUND_NET[0], GROUND_NET[gi]);
                 return adj;
             },
             getVoltageAtNode: function(targetNode, buttonPressed, relayClosed) {
+                if (batteryIsolated) return 0.0;
                 if (targetNode === 'bat_neg' || targetNode === 'btn_out' || targetNode.includes('_gnd')) return 0.0;
                 let graph = this.buildGraph(buttonPressed, relayClosed);
                 if (faultState.relay_coil === 'Normal') {
@@ -597,7 +604,7 @@
 
         function updateFlowAnimation(relayClosed) {
             document.querySelectorAll('.flowing').forEach(el => el.classList.remove('flowing'));
-            if (isAssessmentMode) return; 
+            if (isAssessmentMode || batteryIsolated) return; 
             let graph = {};
             const link = (u, v) => { if(!graph[u]) graph[u]=[]; if(!graph[v]) graph[v]=[]; graph[u].push(v); graph[v].push(u); };
             connections.forEach(conn => { if (!isConnBroken(conn)) link(conn.start, conn.end); });
@@ -632,6 +639,24 @@
             }
         }
 
+        // 電瓶負極拆離（2026-11-12）：量電阻前斷電，學生配線保留；拆離時無回路、電壓為 0、喇叭不作動。
+        function syncIsolationButton() {
+            const b = document.getElementById('isolateBtn'); if (!b) return;
+            b.textContent = batteryIsolated ? '🔌 接回電瓶負極' : '🔌 拆下電瓶負極';
+            b.classList.toggle('isolated', batteryIsolated);
+        }
+        function toggleBatteryIsolation() {
+            batteryIsolated = !batteryIsolated;
+            if (window.NTC_LOG) NTC_LOG.log('battery_disconnect', { disconnected: batteryIsolated });
+            syncIsolationButton(); runSimulation();
+        }
+        function resistanceSafetyWarning() {
+            if (batteryIsolated || knobModes[currentModeIndex].type !== 'res' || probeState.red.jack !== 'volts' || probeState.black.jack !== 'com' || !probeContact.red || !probeContact.black) return '';
+            const g = CircuitEngine.buildGraph(isButtonPressed, document.getElementById('relay').classList.contains('relay-active'));
+            if (faultState.relay_coil === 'Normal') { (g.relay_85 ||= []).push('relay_86'); (g.relay_86 ||= []).push('relay_85'); }
+            const live = [probeContact.red, probeContact.black].some(n => CircuitEngine.isConnected(n, 'bat_pos', g));
+            return live ? '帶電量電阻可能損壞電表或電路，已停止量測。請先按「拆下電瓶負極」斷電，用電壓檔確認約 0V，再用 Ω 檔量測。' : '';
+        }
         let probeContact = { red: null, black: null };
         function checkProbeContact() {
             const points = document.querySelectorAll('.conn-point');
@@ -660,18 +685,25 @@
             if (!probeContact.red && !probeContact.black) { lastMeterSig = ''; return; }
             const sample = { red: probeContact.red, black: probeContact.black, mode: knobModes[currentModeIndex].label,
                 reading: document.getElementById('meter-display').textContent, pressed: isButtonPressed,
-                valid: probeState.red.jack === 'volts' && probeState.black.jack === 'com' };
+                isolated: batteryIsolated,
+                valid: !meterWarning && probeState.red.jack === 'volts' && probeState.black.jack === 'com' };
             const sig = JSON.stringify(sample);
             if (sig === lastMeterSig) return;
             lastMeterSig = sig;
+            if (meterWarning) NTC_LOG.log('unsafe_resistance', sample);
             NTC_LOG.log('probe_measure', sample);
         }
+        let meterWarning = '';
         function updateMultimeterReading(relayEnergized) {
+            meterWarning = (window.__ntcKnobReady && typeof resistanceSafetyWarning === 'function') ? resistanceSafetyWarning() : '';
+            const box = document.getElementById('meterSafety');
+            if (box) { box.textContent = meterWarning; box.classList.toggle('hidden', !meterWarning); }
             const mode = knobModes[currentModeIndex];
             const display = document.getElementById('meter-display');
             if (mode.type === 'off') { display.textContent = ""; return; }
             if (probeState.red.jack !== 'volts' || probeState.black.jack !== 'com') { display.textContent = "0.00"; return; }
             if (!probeContact.red || !probeContact.black) { if (mode.type === 'res') display.textContent = "1 ."; else display.textContent = "0.00"; return; }
+            if (meterWarning) { display.textContent = 'LIVE'; return; }
             if (mode.type === 'dcv') {
                 let vRed = CircuitEngine.getVoltageAtNode(probeContact.red, isButtonPressed, relayEnergized);
                 let vBlack = CircuitEngine.getVoltageAtNode(probeContact.black, isButtonPressed, relayEnergized);

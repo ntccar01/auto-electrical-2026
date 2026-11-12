@@ -91,6 +91,8 @@
         .clear-btn { position: absolute; bottom: 15px; left: 15px; padding: 8px 16px; background-color: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 100; }
         .del-btn { position: absolute; bottom: 15px; left: 125px; padding: 8px 16px; background-color: #e67e22; color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 100; font-family: "Microsoft JhengHei"; font-size: 14px; }
         .del-btn:hover { background-color: #d35400; }
+        .iso-btn { position: absolute; bottom: 60px; left: 15px; padding: 8px 16px; background-color: #34495e; color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 100; font-family: "Microsoft JhengHei"; font-size: 14px; }
+        .iso-btn.isolated { background-color: #b9770e; }
         .del-btn.active-del { background-color: #c0392b; }
         #circuitSvg.delete-mode .wire { cursor: pointer; }
         #circuitSvg.delete-mode .wire:hover { stroke: #e74c3c; stroke-width: 5; }
@@ -179,7 +181,7 @@
     .circuit-area { box-sizing: border-box; width: 100%; padding: 10px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
     #circuitSvg { display: block; flex: 0 0 100%; width: 100%; height: auto; }
     .controls-container { position: static; flex-wrap: wrap; gap: 8px; }
-    .clear-btn, .del-btn { position: static; }
+    .clear-btn, .del-btn, .iso-btn { position: static; }
     .meter-area { flex: 0 0 auto; }
     .status-bar { height: auto; min-height: 20px; max-width: 100%; flex-wrap: wrap; justify-content: center; gap: 8px; }
     .control-bar { box-sizing: border-box; max-width: 100%; }

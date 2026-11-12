@@ -243,3 +243,11 @@ for (const unit of ['horn','start']) {
     assert.ok(A.passGate(r(100, false)).reasons.includes('診斷結果不正確'));
   });
 }
+test('horn: battery isolation keeps wiring, kills voltage, blocks live ohm readings', () => {
+  const h = app('horn'); wire(h, HORN_WIRES);
+  const r = h.run(`(function(){window.__ntcKnobReady=true;probeState.red.jack='volts';probeState.black.jack='com';
+    const read=(a,b,m)=>{probeContact.red=a;probeContact.black=b;currentModeIndex=m;meterWarning=resistanceSafetyWarning();return {w:meterWarning,v:CircuitEngine.getVoltageAtNode(a,false,false)};};
+    const live=read('fuse_in','fuse_out',4); toggleBatteryIsolation(); const iso=read('fuse_in','fuse_out',4);
+    return {liveWarn:!!live.w, isoWarn:!!iso.w, isoV:CircuitEngine.getVoltageAtNode('fuse_out',false,false), wiring:ASSESS.checkWiring().ok===ASSESS.checkWiring().total};})()`);
+  assert.equal(r.liveWarn, true); assert.equal(r.isoWarn, false); assert.equal(r.isoV, 0); assert.equal(r.wiring, true);
+});

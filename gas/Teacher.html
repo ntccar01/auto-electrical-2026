@@ -11,7 +11,7 @@
 <section id="slipSection"><h2>學生名單與 6 碼代碼</h2>
 <p class="hint">名單只有班級代號與座號，不放姓名。代碼只會在產生或重設時顯示這一次，請當場列印或抄下；試算表只保存加密後的資料。</p>
 <input id="rosterCls" placeholder="班級代號"><input id="rosterFrom" type="number" min="1" max="999" placeholder="起始座號" style="width:110px"><input id="rosterTo" type="number" min="1" max="999" placeholder="結束座號" style="width:110px"><button id="rosterCreate">產生代碼</button>
-<br><input id="resetSeat" type="number" min="1" max="999" placeholder="座號" style="width:110px"><button id="rosterReset">重設此座號代碼</button><button id="rosterList">查看名單</button><button id="printSlips" disabled>列印代碼條</button>
+<br><input id="resetSeat" type="number" min="1" max="999" placeholder="座號" style="width:110px"><button id="rosterReset">重設此座號代碼</button><button id="rosterRemove">移除此座號</button><button id="rosterList">查看名單</button><button id="printSlips" disabled>列印代碼條</button>
 <p id="rosterInfo" class="hint"></p><div id="slips"></div></section>
 <section><h2>覆閱、調分與核章</h2><div class="table-wrap"><table><thead><tr><th>學期</th><th>單元／題目</th><th>班級／座號</th><th>來源／驗證</th><th>初評</th><th>調分後</th><th>核章</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div></section>
 <section><h2>核發證書</h2><input id="cls" placeholder="班級代號"><input id="seat" placeholder="座號"><input id="semester" placeholder="學期，例如 115-1"><button id="issue">核發學期已核章紀錄證書</button><p>核發後可複製學生查驗連結。需先在指令碼屬性設定唯讀查驗部署網址 STUDENT_VERIFY_URL。</p><input id="studentLink" aria-label="學生查驗連結" placeholder="核發後產生學生查驗連結" readonly><button id="copyStudentLink" type="button" disabled>複製學生查驗連結</button></section>
@@ -30,9 +30,9 @@ $('issue').onclick=()=>{ $('studentLink').value='';$('copyStudentLink').disabled
 $('verify').onclick=()=>rpc('verifyCertificate',[$('certId').value.trim()],result=>{$('verification').textContent=result.valid?'雲端查驗通過：'+result.cls+'／座號 '+result.seat+'／'+result.semester:'查無有效證書或簽章不符';});
 $('copyStudentLink').onclick=async()=>{const link=$('studentLink').value;if(!link)return;try{await navigator.clipboard.writeText(link);$('status').textContent='學生查驗連結已複製。';}catch(e){$('studentLink').focus();$('studentLink').select();const ok=document.execCommand('copy');$('status').textContent=ok?'學生查驗連結已複製。':'請手動複製欄位中的學生查驗連結。';}};
 $('issueReport').onclick=()=>{if(!$('reportConsent').checked){$('status').textContent='請先確認學生同意。';return;}$('reportLink').value='';rpc('issueInterviewReport',[$('cls').value.trim(),$('seat').value.trim(),$('semester').value.trim(),true],report=>{rpc('getStudentVerifyUrl',[],base=>{if(!base){$('status').textContent='報告已產生，但尚未設定 STUDENT_VERIFY_URL。';return;}$('reportLink').value=base+'?page=interview&id='+encodeURIComponent(report.reportId);$('reportConsent').checked=false;$('status').textContent='報告連結已產生，30 天後到期；請選取連結複製給學生。';});});};
-const VERIFY_TEXT={ok:'✅ 驗證通過',unsigned:'❔ 未簽章',noRoster:'❔ 名單無此座號',tampered:'⚠️ 內容被修改'};
+const VERIFY_TEXT={readableEdited:'⚠️ 可讀欄位被修改',ok:'✅ 驗證通過',unsigned:'❔ 未簽章',noRoster:'❔ 名單無此座號',tampered:'⚠️ 內容被修改'};
 function verifyText(r){if(r.source!=='csv')return 'JSON 提交檔';return 'CSV '+(VERIFY_TEXT[r.verify]||r.verify||'')+(r.attempt?'（第'+r.attempt+'次）':'');}
-function statusClass(s){return s==='ok'?'ok':(s==='tampered'||s==='invalid')?'bad':'warn';}
+function statusClass(s){return s==='ok'?'ok':(s==='tampered'||s==='invalid'||s==='readableEdited')?'bad':'warn';}
 let csvPayload=null;
 async function readCsvFiles(){const list=Array.from($('csvFiles').files);if(!list.length)throw new Error('請選擇成績檔');if(list.length>100)throw new Error('一次最多 100 個檔案');
   return Promise.all(list.map(async f=>{if(f.size>100000)throw new Error(f.name+' 超過 100 KB');return {name:f.name,text:await f.text()};}));}
@@ -54,6 +54,9 @@ $('rosterCreate').onclick=()=>rpc('createRoster',[$('rosterCls').value.trim(),Nu
 $('rosterReset').onclick=()=>{const seat=$('resetSeat').value.trim();if(!seat){$('status').textContent='請輸入要重設的座號';return;}
   if(!confirm('重設後舊代碼立即失效，確定重設 '+$('rosterCls').value.trim()+' '+seat+' 號？'))return;
   rpc('resetCode',[$('rosterCls').value.trim(),seat],c=>showSlips([c],'已重設 '+c.cls+' '+c.seat+' 號的代碼，舊代碼已失效。'));};
+$('rosterRemove').onclick=()=>{const cls=$('rosterCls').value.trim(),seat=$('resetSeat').value.trim();if(!cls||!seat){$('status').textContent='請輸入班級代號與座號';return;}
+  if(!confirm('確定從名單移除 '+cls+' '+seat+' 號？代碼會立即失效，已匯入的成績會保留。'))return;
+  rpc('removeRosterSeat',[cls,seat],r=>{$('slips').replaceChildren();$('printSlips').disabled=true;$('rosterInfo').textContent='已移除 '+r.cls+' '+r.seat+' 號，成績紀錄保留。';});};
 $('rosterList').onclick=()=>rpc('listRoster',[$('rosterCls').value.trim()],list=>{$('slips').replaceChildren();$('printSlips').disabled=true;
   $('rosterInfo').textContent=list.length?'名單共 '+list.length+' 位：'+list.map(x=>x.seat+(x.resetAt?'（已重設）':'')).join('、')+'。代碼不會再顯示，忘記請重設。':'這個班級尚未建立名單。';});
 $('printSlips').onclick=()=>{document.body.classList.add('print-slips');window.print();setTimeout(()=>document.body.classList.remove('print-slips'),500);};

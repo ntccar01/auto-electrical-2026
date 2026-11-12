@@ -87,3 +87,28 @@ test('csv: Excel-style quoting and formula guard survive the round trip', async 
   assert.ok(f.text.includes('"\'=HYPERLINK(""x""),含逗號"'));
   assert.equal(h.ctx.previewCsv([asFile(f)], '')[0].status, 'ok');
 });
+
+test('csv: editing the readable score column (e.g. in Excel) is flagged and never imported', async () => {
+  const h = makeGAS(), S = client();
+  const code = h.ctx.createRoster('汽一甲', 12, 12).created[0].code;
+  const f = await S.buildCsv(record(), {}, code);
+  const lines = f.text.split('\r\n'), cells = lines[1].split(','); cells[10] = '100'; // 總分 78 → 100
+  const edited = { name: 'excel.csv', text: [lines[0], cells.join(','), ''].join('\r\n') };
+  const p = h.ctx.previewCsv([edited], '')[0];
+  assert.equal(p.status, 'readableEdited'); assert.equal(p.message, '總分'); assert.equal(p.score, 78);
+  assert.equal(h.ctx.importCsv([edited], '', true).imported, 0);
+});
+
+test('roster: removing a seat invalidates its code but keeps grades', async () => {
+  const h = makeGAS(), S = client();
+  const code = h.ctx.createRoster('汽一甲', 11, 13).created[1].code;
+  const f = await S.buildCsv(record(), {}, code);
+  assert.equal(h.ctx.importCsv([asFile(f)], '', false).imported, 1);
+  h.ctx.removeRosterSeat('汽一甲', '12');
+  assert.deepEqual(Array.from(h.ctx.listRoster('汽一甲'), x => x.seat), ['11', '13']);
+  assert.equal(h.ctx.listRecords().length, 1);
+  const again = await S.buildCsv(record({ recordId: 'R-csv-9' }), {}, code);
+  assert.equal(h.ctx.previewCsv([asFile(again)], '')[0].status, 'noRoster');
+  assert.throws(() => h.ctx.removeRosterSeat('汽一甲', '12'), /沒有/);
+  h.setEmail('student@example.invalid'); assert.throws(() => h.ctx.removeRosterSeat('汽一甲', '11'), /無教師權限/);
+});

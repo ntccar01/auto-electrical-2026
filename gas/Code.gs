@@ -169,7 +169,7 @@ function verifyInterviewReport(id) {
  * NTC_Roster 只保存 pinKey，不保存代碼原文；代碼只在產生／重設時回傳給教師一次。
  */
 var CODE_ALPHABET_='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-var CSV_STATUS_LABEL_={ok:'驗證通過',tampered:'內容被修改',unsigned:'未簽章',noRoster:'名單中無此座號',invalid:'格式錯誤',practice:'練習模式紀錄',duplicate:'重複'};
+var CSV_STATUS_LABEL_={ok:'驗證通過',tampered:'內容被修改',unsigned:'未簽章',noRoster:'名單中無此座號',invalid:'格式錯誤',practice:'練習模式紀錄',duplicate:'重複',readableEdited:'可讀欄位被修改'};
 function codeCheck_(body){var sum=0;for(var i=0;i<body.length;i++)sum+=(i+1)*CODE_ALPHABET_.indexOf(body[i]);return CODE_ALPHABET_[sum%CODE_ALPHABET_.length];}
 function newCode_(){
   var h=(Utilities.getUuid()+Utilities.getUuid()).replace(/-/g,''),body='';
@@ -228,6 +228,7 @@ function checkCsvFiles_(files,semester){
     var name=String((f&&f.name)||'').slice(0,120),text=String((f&&f.text)||'');
     if(text.length>100000){out.push({file:name,status:'invalid',message:'檔案過大'});return;}
     var rows=parseCsv_(text),head=rows[0]||[],di=head.indexOf('資料'),si=head.indexOf('驗證碼');
+    var col=function(row,name){var i=head.indexOf(name);return i<0?null:String(row[i]==null?'':row[i]).trim();};
     if(di<0||si<0||rows.length<2){out.push({file:name,status:'invalid',message:'不是本系統的成績檔'});return;}
     rows.slice(1).forEach(function(row){
       var item={file:name},data=String(row[di]||'').trim(),sig=String(row[si]||'').trim().toLowerCase();
@@ -245,6 +246,13 @@ function checkCsvFiles_(files,semester){
         else if(!sig||sig==='未簽章')item.status='unsigned';
         else if(!key)item.status='noRoster';
         else item.status=(csvSign_(key,data)===sig)?'ok':'tampered';
+        // 可讀欄位（老師用 Excel 看到的）必須與簽章資料一致，否則視為被修改、不匯入
+        if(['ok','unsigned','noRoster'].indexOf(item.status)>=0){
+          var diff=[],chk=function(name,val){var v=col(row,name);if(v!==null&&v!==String(val))diff.push(name);};
+          chk('班級代號',rec.cls);chk('座號',rec.seat);chk('總分',rec.summary.score==null?'':rec.summary.score);
+          chk('是否通過',rec.summary.pass?'通過':'未通過');chk('紀錄ID',rec.recordId);chk('今日第幾次',rec.attempt);
+          if(diff.length){item.status='readableEdited';item.message=diff.join('、');}
+        }
         if(['ok','unsigned','noRoster'].indexOf(item.status)>=0){
           if(grades[rec.recordId]||batch[rec.recordId])item.status='duplicate';else batch[rec.recordId]=true;
         }
@@ -272,5 +280,15 @@ function importCsv(files,semester,includeUnverified){
     });
     if(add.length)sheet.getRange(sheet.getLastRow()+1,1,add.length,2).setValues(add);
     return {imported:add.length,counts:counts};
+  });
+}
+
+// 學生休學／轉出：從名單移除座號，代碼立即失效；已匯入成績保留（2026-11-12）
+function removeRosterSeat(cls,seat){
+  teacher_();cls=code_(cls,'班級代號');seat=seat_(seat);
+  return locked_(function(){
+    var sheet=sheet_('NTC_Roster'),hit=rows_(sheet).filter(function(r){return r.id===rosterId_(cls,seat);})[0];
+    if(!hit)throw new Error('名單中沒有 '+cls+' '+seat+' 號。');
+    sheet.deleteRow(hit.row);return {cls:cls,seat:seat};
   });
 }

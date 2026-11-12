@@ -4,7 +4,7 @@ function makeGAS() {
   const sheets=new Map();let email='teacher@example.invalid',sheetAccess=0;
   function sheet(name) {
     const data=[];
-    return {name,data,getLastRow:()=>data.length,appendRow(row){data.push([...row]);},getRange(row,col,count,width){return {
+    return {name,data,getLastRow:()=>data.length,appendRow(row){data.push([...row]);},deleteRow(row){data.splice(row-1,1);},getRange(row,col,count,width){return {
       getValues:()=>JSON.parse(JSON.stringify(Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>data[row-1+i]?.[col-1+j]??'')))),
       setValues(values){values.forEach((r,i)=>{data[row-1+i]??=[];r.forEach((v,j)=>data[row-1+i][col-1+j]=v);});}
     };}};

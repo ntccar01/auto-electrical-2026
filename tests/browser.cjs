@@ -563,5 +563,26 @@ let browser;
     await tp.screenshot({path:path.join(output,'teacher-csv-import.png'),fullPage:true});await tp.close();await sp.close();
     console.log('PASS roster codes, signed student CSV, tamper detection and teacher CSV import');
   }
+  // 2026-11-12 第 2 階段：老師開放 → 學生按「上傳成績」輸入代碼 → 伺服器驗證寫入；未開放時可改下載
+  {
+    const {makeGAS}=require('./gas-helpers.cjs');const g3=makeGAS();
+    const code=g3.ctx.createRoster('TEST_UP',1,1).created[0].code;
+    const sp=await context.newPage();sp.on('pageerror',e=>errors.push(e.message));
+    await sp.route('https://upload.test/exec',async route=>{const out=g3.ctx.doPost({postData:{contents:route.request().postData()}});await route.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:out.text});});
+    const msgs=[];sp.on('dialog',d=>{msgs.push(d.message());if(d.type()==='prompt')d.accept(code);else if(d.type()==='confirm')d.dismiss();else d.accept();});
+    await sp.goto(base+'/units/horn/');await sp.evaluate(()=>{NTC_CONFIG.uploadUrl='https://upload.test/exec';});
+    await sp.getByRole('button',{name:'📝 進入考評模式'}).click();
+    await sp.locator('#inputClass').fill('TEST_UP');await sp.locator('#inputSeat').fill('1');await sp.getByRole('button',{name:'開始考評'}).click();
+    await sp.evaluate(()=>{openQuizModal();document.querySelector('input[name="diagnosis"]').checked=true;});await sp.locator('#confirmSubmitBtn').click();
+    const waitMsg=async t=>{for(let i=0;i<50&&!msgs.some(m=>m.includes(t));i++)await sp.waitForTimeout(100);};
+    await sp.locator('.btn-cloud').click();await waitMsg('沒有開放');
+    assert.ok(msgs.some(m=>m.includes('沒有開放')),'closed class should be refused: '+msgs.join(' | '));
+    g3.ctx.openUpload('TEST_UP',50);msgs.length=0;
+    await sp.locator('.btn-cloud').click();await waitMsg('上傳成功');
+    assert.ok(msgs.some(m=>m.includes('上傳成功')&&m.includes('第 1 次')),msgs.join(' | '));
+    const saved=g3.ctx.listRecords();assert.equal(saved.length,1);assert.equal(saved[0].source,'upload');assert.equal(saved[0].cls,'TEST_UP');
+    await sp.close();
+    console.log('PASS teacher-opened online upload, closed-window refusal and server-side attempt count');
+  }
   assert.deepEqual(errors,[]);console.log('ALL BROWSER CHECKS PASSED');await context.close();
 })().catch(e=>{console.error(e.stack);process.exitCode=1;}).finally(async()=>{if(browser)await browser.close();await new Promise(r=>server.close(r));});

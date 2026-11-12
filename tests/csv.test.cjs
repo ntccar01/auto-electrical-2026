@@ -112,3 +112,51 @@ test('roster: removing a seat invalidates its code but keeps grades', async () =
   assert.throws(() => h.ctx.removeRosterSeat('汽一甲', '12'), /沒有/);
   h.setEmail('student@example.invalid'); assert.throws(() => h.ctx.removeRosterSeat('汽一甲', '11'), /無教師權限/);
 });
+
+// ===== 第 2 階段：開放時段與線上上傳 =====
+async function uploadBody(S, rec, code) {
+  const f = await S.buildCsv(rec, {}, code);
+  const cells = f.text.split('\r\n')[1].split(',');
+  return JSON.stringify({ data: cells.at(-2), sig: cells.at(-1) });
+}
+const post = (h, body) => JSON.parse(h.ctx.doPost({ postData: { contents: body } }).text);
+
+test('upload: only open classes accept, server counts attempts, duplicates are safe', async () => {
+  const h = makeGAS(), S = client();
+  const code = h.ctx.createRoster('汽一甲', 12, 12).created[0].code;
+  const body1 = await uploadBody(S, record({ archivedAt: new Date().toISOString() }), code);
+  assert.equal(post(h, body1).code, 'closed');
+  h.ctx.openUpload('汽一甲', 50);
+  assert.equal(h.ctx.uploadStatus()[0].cls, '汽一甲');
+  const r1 = post(h, body1); assert.equal(r1.ok, true); assert.equal(r1.attempt, 1);
+  assert.equal(post(h, body1).code, 'duplicate');
+  const r2 = post(h, await uploadBody(S, record({ recordId: 'R-up-2', archivedAt: new Date().toISOString() }), code));
+  assert.equal(r2.attempt, 2, 'attempts are counted on the server');
+  const rows = h.ctx.listRecords(); assert.equal(rows.length, 2); assert.equal(rows[0].source, 'upload'); assert.equal(rows[0].verify, 'ok');
+  h.ctx.closeUpload('汽一甲');
+  assert.equal(post(h, await uploadBody(S, record({ recordId: 'R-up-3' }), code)).code, 'closed');
+});
+
+test('upload: wrong codes lock the seat after 5 tries; practice, junk and unsigned are rejected', async () => {
+  const h = makeGAS(), S = client();
+  const code = h.ctx.createRoster('汽一甲', 12, 12).created[0].code;
+  h.ctx.openUpload('汽一甲', 50);
+  const wrong = code === 'ABCDEJ' ? 'ABCDEK' : 'ABCDEJ';
+  for (let i = 0; i < 5; i++) assert.equal(post(h, await uploadBody(S, record({ recordId: 'R-w' + i }), wrong)).code, 'auth');
+  assert.equal(post(h, await uploadBody(S, record({ recordId: 'R-ok' }), code)).code, 'locked');
+  h.cache.clear();
+  assert.equal(post(h, await uploadBody(S, record({ recordId: 'R-ok' }), code)).ok, true);
+  assert.equal(post(h, await uploadBody(S, record({ recordId: 'R-p', mode: 'practice' }), code)).code, 'practice');
+  assert.equal(post(h, 'not json').code, 'bad');
+  assert.equal(post(h, JSON.stringify({ data: 'abc', sig: '' })).code, 'bad');
+  // 冒用別人座號：自己的代碼簽 13 號
+  h.ctx.createRoster('汽一甲', 13, 13);
+  assert.equal(post(h, await uploadBody(S, record({ recordId: 'R-x', seat: '13' }), code)).code, 'auth');
+});
+
+test('upload: open/close is teacher-only and time-limited', () => {
+  const h = makeGAS();
+  assert.throws(() => h.ctx.openUpload('汽一甲', 1), /5～240/);
+  h.setEmail('student@example.invalid');
+  for (const m of ['openUpload', 'closeUpload', 'uploadStatus']) assert.throws(() => h.ctx[m]('汽一甲', 50), /無教師權限/);
+});

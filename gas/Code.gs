@@ -239,6 +239,7 @@ function checkCsvFiles_(files,semester){
         rec.attempt=(Number.isInteger(src.attempt)&&src.attempt>0&&src.attempt<100)?src.attempt:1;
         rec.level=['basic','standard','challenge'].indexOf(src.level)>=0?src.level:'';
         rec.summary.diagnosisCorrect=!!(src.summary&&src.summary.diagnosisCorrect===true);
+        rec.uploadDay=src.submittedAt?taipeiDay_(src.submittedAt):'';
         item.record=rec;item.cls=rec.cls;item.seat=rec.seat;item.unit=rec.unit;item.paper=rec.paper;item.score=rec.summary.score;item.pass=rec.summary.pass;item.attempt=rec.attempt;
         var key=keys[rosterId_(rec.cls,rec.seat)];
         // 先判斷練習／簽章，被修改的檔案即使與已匯入紀錄同 ID 也要讓老師看到「內容被修改」。
@@ -291,4 +292,63 @@ function removeRosterSeat(cls,seat){
     if(!hit)throw new Error('名單中沒有 '+cls+' '+seat+' 號。');
     sheet.deleteRow(hit.row);return {cls:cls,seat:seat};
   });
+}
+
+/* ===== 第 2 階段：教師開放時段＋學生線上上傳（2026-11-12）=====
+ * 需另建部署：執行身分「我」、存取權「任何人」，網址填入 shared/js/config.js 的 uploadUrl。
+ * 上傳端點 doPost 只接受：開放中的班級、名單內座號、正確代碼簽章、考評紀錄、未重複。
+ * 代碼錯誤以 CacheService 計數，同一班級座號連錯 5 次鎖 10 分鐘。繳交次數由伺服器依既有紀錄計算。
+ */
+var UPLOAD_MAX_FAILS_=5,UPLOAD_LOCK_SECONDS_=600;
+function uploadWindows_(){try{return JSON.parse(PropertiesService.getScriptProperties().getProperty('UPLOAD_WINDOWS')||'{}')||{};}catch(e){return {};}}
+function saveUploadWindows_(w){PropertiesService.getScriptProperties().setProperty('UPLOAD_WINDOWS',JSON.stringify(w));}
+function activeWindows_(){var w=uploadWindows_(),now=Date.now(),out={};Object.keys(w).forEach(function(c){if(w[c]&&w[c].until>now)out[c]=w[c];});return out;}
+function openUpload(cls,minutes){
+  var email=teacher_();cls=code_(cls,'班級代號');minutes=Number(minutes)||50;
+  if(minutes<5||minutes>240)throw new Error('開放時間須為 5～240 分鐘。');
+  return locked_(function(){var w=activeWindows_();w[cls]={until:Date.now()+minutes*60000,by:email,openedAt:new Date().toISOString()};saveUploadWindows_(w);return uploadStatus_();});
+}
+function closeUpload(cls){
+  teacher_();cls=code_(cls,'班級代號');
+  return locked_(function(){var w=activeWindows_();delete w[cls];saveUploadWindows_(w);return uploadStatus_();});
+}
+function uploadStatus_(){var w=activeWindows_();return Object.keys(w).sort().map(function(c){return {cls:c,until:new Date(w[c].until).toISOString(),minutesLeft:Math.ceil((w[c].until-Date.now())/60000)};});}
+function uploadStatus(){teacher_();return uploadStatus_();}
+function taipeiDay_(iso){var d=new Date(new Date(iso).getTime()+8*3600000);return d.toISOString().slice(0,10);}
+function jsonOut_(obj){return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);}
+function failKey_(cls,seat){return 'upfail|'+cls+'|'+seat;}
+
+function handleUpload_(body){
+  var req;try{req=JSON.parse(body);}catch(e){return {ok:false,code:'bad',message:'資料格式錯誤。'};}
+  var data=String(req&&req.data||''),sig=String(req&&req.sig||'').toLowerCase();
+  if(!data||data.length>60000||!/^[0-9a-f]{64}$/.test(sig))return {ok:false,code:'bad',message:'資料格式錯誤或缺少代碼。'};
+  var payload,src,rec;
+  try{payload=JSON.parse(Utilities.newBlob(Utilities.base64Decode(data)).getDataAsString('UTF-8'));
+    if(!payload||payload.v!==1||payload.kind!=='ntc-submission'||!payload.record)throw new Error('x');
+    src=payload.record;rec=normalized_(src,'');}catch(e){return {ok:false,code:'bad',message:'資料格式錯誤。'};}
+  if(src.mode!=='exam')return {ok:false,code:'practice',message:'練習模式的紀錄不需要上傳。'};
+  var cache=CacheService.getScriptCache(),fk=failKey_(rec.cls,rec.seat),fails=Number(cache.get(fk)||0);
+  if(fails>=UPLOAD_MAX_FAILS_)return {ok:false,code:'locked',message:'代碼錯誤太多次，請 10 分鐘後再試，或請老師協助。'};
+  return locked_(function(){
+    if(!activeWindows_()[rec.cls])return {ok:false,code:'closed',message:'老師目前沒有開放 '+rec.cls+' 上傳，請下載成績檔交給老師。'};
+    var roster=rosterRows_().filter(function(r){return r.id===rosterId_(rec.cls,rec.seat);})[0];
+    if(!roster||csvSign_(roster.data.pinKey,data)!==sig){
+      cache.put(fk,String(fails+1),UPLOAD_LOCK_SECONDS_);
+      return {ok:false,code:'auth',message:'班級、座號或代碼不正確（還可再試 '+Math.max(0,UPLOAD_MAX_FAILS_-fails-1)+' 次）。'};
+    }
+    cache.remove(fk);
+    var sheet=sheet_('NTC_Grades'),rows=rows_(sheet);
+    if(rows.some(function(r){return r.id===rec.recordId;}))return {ok:true,code:'duplicate',message:'這次成績已經上傳過了。'};
+    var day=taipeiDay_(src.submittedAt||new Date().toISOString()),level=['basic','standard','challenge'].indexOf(src.level)>=0?src.level:'';
+    var prior=rows.filter(function(r){var d=r.data;return d.cls===rec.cls&&d.seat===rec.seat&&d.unit===rec.unit&&d.paper===rec.paper&&(d.level||'')===level&&d.uploadDay===day;}).length;
+    rec.level=level;rec.attempt=prior+1;rec.clientAttempt=(Number.isInteger(src.attempt)&&src.attempt>0&&src.attempt<100)?src.attempt:1;
+    rec.summary.diagnosisCorrect=!!(src.summary&&src.summary.diagnosisCorrect===true);
+    rec.uploadDay=day;rec.verify='ok';rec.source='upload';rec.importedAt=new Date().toISOString();rec.importedBy='student-upload';
+    write_(sheet,sheet.getLastRow()+1,rec);
+    return {ok:true,code:'saved',attempt:rec.attempt,message:'上傳成功！這是本卷今日第 '+rec.attempt+' 次繳交。'};
+  });
+}
+function doPost(e){
+  try{return jsonOut_(handleUpload_(e&&e.postData?e.postData.contents:''));}
+  catch(err){return jsonOut_({ok:false,code:'error',message:'伺服器忙碌，請稍後再試一次。'});}
 }

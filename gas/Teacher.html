@@ -2,6 +2,11 @@
 <style>body{font:16px system-ui,sans-serif;max-width:1100px;margin:30px auto;padding:16px;color:#243746;background:#f3f6f8}section{background:white;padding:20px;margin:16px 0;border-radius:10px}button,input{font:inherit;padding:8px;margin:4px}table{border-collapse:collapse;width:100%}th,td{padding:8px;border:1px solid #ccd5df;text-align:left}#status{white-space:pre-wrap} .table-wrap{overflow:auto}button:disabled{opacity:.5}.hint{color:#5d6d7e;font-size:14px}.ok{color:#1e8449}.warn{color:#b9770e}.bad{color:#c0392b}#slips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.slip{border:1px dashed #7f8c8d;padding:10px;border-radius:6px;break-inside:avoid}.slip b{font-size:22px;letter-spacing:3px;font-family:ui-monospace,Consolas,monospace}@media print{body.print-slips>*:not(#slipSection){display:none!important}body.print-slips #slipSection>*:not(#slips){display:none!important}body.print-slips{background:white;margin:0;max-width:none}}</style></head>
 <body><h1>汽車電系雲端教師端</h1><p>限授權教師帳號使用。匯入檔案為學生端初評，請覆閱後再核章。</p><p id="status" role="status">正在讀取…</p>
 <section><h2>匯入成績</h2><input id="importSemester" placeholder="本批匯入學期，例如 115-1"><input id="file" type="file" accept=".json,application/json"><button id="importBtn">匯入提交檔</button><button id="refresh">重新整理</button><p>使用學生端「匯出提交檔」或本機教師端「匯出雲端提交檔」。重複 ID 會略過；本機核章與調分不會自動轉為雲端核章。</p></section>
+<section><h2>開放學生線上上傳</h2>
+<p class="hint">按下開放後，該班學生可在考評結果畫面按「上傳成績」，輸入 6 碼代碼直接送到這裡；時間到自動關閉。沒開放時學生只能下載成績檔交給你。</p>
+<input id="upCls" placeholder="班級代號"><input id="upMin" type="number" min="5" max="240" value="50" style="width:110px"> 分鐘
+<button id="upOpen">開放上傳</button><button id="upClose">關閉上傳</button><button id="upRefresh">重新整理狀態</button>
+<p id="upInfo" class="hint">按「重新整理狀態」查看目前開放的班級。</p></section>
 <section><h2>匯入學生成績檔（CSV）</h2>
 <p class="hint">學生在考評結果畫面按「下載成績檔」，用通訊軟體傳給你。請匯入<strong>原始檔</strong>（用 Excel 開啟後另存會使驗證失敗）。可一次選多個檔案。</p>
 <input id="csvSemester" placeholder="本批學期（空白則用檔案內學期）"><input id="csvFiles" type="file" accept=".csv,text/csv" multiple><button id="csvPreview">檢查檔案</button>
@@ -30,8 +35,12 @@ $('issue').onclick=()=>{ $('studentLink').value='';$('copyStudentLink').disabled
 $('verify').onclick=()=>rpc('verifyCertificate',[$('certId').value.trim()],result=>{$('verification').textContent=result.valid?'雲端查驗通過：'+result.cls+'／座號 '+result.seat+'／'+result.semester:'查無有效證書或簽章不符';});
 $('copyStudentLink').onclick=async()=>{const link=$('studentLink').value;if(!link)return;try{await navigator.clipboard.writeText(link);$('status').textContent='學生查驗連結已複製。';}catch(e){$('studentLink').focus();$('studentLink').select();const ok=document.execCommand('copy');$('status').textContent=ok?'學生查驗連結已複製。':'請手動複製欄位中的學生查驗連結。';}};
 $('issueReport').onclick=()=>{if(!$('reportConsent').checked){$('status').textContent='請先確認學生同意。';return;}$('reportLink').value='';rpc('issueInterviewReport',[$('cls').value.trim(),$('seat').value.trim(),$('semester').value.trim(),true],report=>{rpc('getStudentVerifyUrl',[],base=>{if(!base){$('status').textContent='報告已產生，但尚未設定 STUDENT_VERIFY_URL。';return;}$('reportLink').value=base+'?page=interview&id='+encodeURIComponent(report.reportId);$('reportConsent').checked=false;$('status').textContent='報告連結已產生，30 天後到期；請選取連結複製給學生。';});});};
+function showUpload(list){$('upInfo').textContent=list.length?'開放中：'+list.map(x=>x.cls+'（剩 '+x.minutesLeft+' 分鐘）').join('、'):'目前沒有開放上傳的班級。';}
+$('upOpen').onclick=()=>rpc('openUpload',[$('upCls').value.trim(),Number($('upMin').value)],showUpload);
+$('upClose').onclick=()=>rpc('closeUpload',[$('upCls').value.trim()],showUpload);
+$('upRefresh').onclick=()=>rpc('uploadStatus',[],showUpload);
 const VERIFY_TEXT={readableEdited:'⚠️ 可讀欄位被修改',ok:'✅ 驗證通過',unsigned:'❔ 未簽章',noRoster:'❔ 名單無此座號',tampered:'⚠️ 內容被修改'};
-function verifyText(r){if(r.source!=='csv')return 'JSON 提交檔';return 'CSV '+(VERIFY_TEXT[r.verify]||r.verify||'')+(r.attempt?'（第'+r.attempt+'次）':'');}
+function verifyText(r){if(r.source==='upload')return '線上上傳 ✅'+(r.attempt?'（第'+r.attempt+'次）':'');if(r.source!=='csv')return 'JSON 提交檔';return 'CSV '+(VERIFY_TEXT[r.verify]||r.verify||'')+(r.attempt?'（第'+r.attempt+'次）':'');}
 function statusClass(s){return s==='ok'?'ok':(s==='tampered'||s==='invalid'||s==='readableEdited')?'bad':'warn';}
 let csvPayload=null;
 async function readCsvFiles(){const list=Array.from($('csvFiles').files);if(!list.length)throw new Error('請選擇成績檔');if(list.length>100)throw new Error('一次最多 100 個檔案');

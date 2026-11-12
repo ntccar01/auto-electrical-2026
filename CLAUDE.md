@@ -24,7 +24,7 @@
 ## 🔒 安全規則（不可違反）
 1. `.env` 或任何含 API Key 的檔案**絕對不能 commit**
 2. 學生資料去識別化（只用座號＋班級代號）；驗證頁遮罩個資
-3. GAS URL 放 `shared/js/config.js`（公開 repo 可見無妨，但部署權限只限老師帳號）
+3. GAS URL 放 `shared/js/config.js`：`gasUrl` 教師部署（僅限自己）；`uploadUrl` 學生上傳部署（任何人，僅 doPost 有作用且需開放時段＋代碼）
 4. `電子書/*.pdf` 為本地課本掃描檔，禁止重新加入 Git。2026-10-21 已執行 `git rm --cached`，保留本地檔案；舊 Git 歷史仍含 PDF，未經指示不可重寫歷史或 force push。
 5. 如果不小心 commit 了機密 → 立即告知使用者處理
 6. 收工前說「收工」讓 Claude 同步；push 前確認 `gh auth status` 有效

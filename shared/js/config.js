@@ -6,6 +6,8 @@ window.NTC_CONFIG = {
   version: '2.0-P0',
   // 教師專用 GAS Web App URL（以教師帳號登入，匯入學生提交檔）
   gasUrl: 'https://script.google.com/a/macros/gm.ntc.edu.tw/s/AKfycbwjXTH4KDgM7IlZd3_sR8KONW8PymWHiZseardrQF-x5h8_Ztna-UPMCDqswB248o5P/exec',
+  // 學生線上上傳端點（同一 Apps Script 另建「任何人」存取的部署）；空白則只能下載成績檔交給老師
+  uploadUrl: 'https://script.google.com/macros/s/AKfycbxSBB7j9D75LOgqQNx9smKyjKquYHKVfd_LdoZ0XVVFfFDZT6LNwm-GOEzhPOpbLldv/exec',
   semester: '115-1',
   // 單元註冊表：採計勾選與學習地圖由此驅動
   units: [

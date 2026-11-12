@@ -590,6 +590,13 @@
             NTC_SUBMIT.downloadForTeacher(record, { diagnosis: lastResultData.userDiagnosis }).catch(e => alert('下載失敗：' + e.message));
         }
 
+        function uploadResult() {
+            if (!lastResultData) return;
+            const record = window.NTC_LOG ? NTC_LOG.history().find(r => r.recordId === lastResultData.recordId) : null;
+            if (!window.NTC_SUBMIT) { alert('成績檔元件未載入，請重新整理頁面。'); return; }
+            NTC_SUBMIT.uploadOnline(record, { diagnosis: lastResultData.userDiagnosis }).catch(e => alert('上傳失敗：' + e.message));
+        }
+
         function exportSubmission() {
             if (!lastResultData || !window.NTC_LOG) return;
             const record = NTC_LOG.history().find(r => r.recordId === lastResultData.recordId);

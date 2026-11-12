@@ -67,11 +67,16 @@ window.NTC_SUBMIT = (function () {
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
-  async function buildCsv(record, extra, code) {
+  async function signed(record, extra, code) {
     var payload = payloadOf(record, extra), r = payload.record;
     var data = base64Utf8(JSON.stringify(payload));
-    var signature = '未簽章';
-    if (code) signature = await sign(await pinKey(r.cls, r.seat, code), data);
+    var sig = code ? await sign(await pinKey(r.cls, r.seat, code), data) : '';
+    return { payload: payload, data: data, sig: sig };
+  }
+
+  async function buildCsv(record, extra, code) {
+    var sp = await signed(record, extra, code), r = sp.payload.record, data = sp.data;
+    var signature = code ? sp.sig : '未簽章';
     var parts = Object.keys(r.summary.parts).map(function (k) { return k + ' ' + r.summary.parts[k]; }).join('／');
     var row = [r.cls, r.seat, UNIT_NAMES[r.unit] || r.unit, r.mode === 'exam' ? '考評' : '練習', r.paper, LEVEL_NAMES[r.level] || r.level,
       localStamp(r.submittedAt), r.attempt, r.diagnosis, r.summary.pass ? '通過' : '未通過', r.summary.score, parts, r.recordId, data, signature];
@@ -88,22 +93,32 @@ window.NTC_SUBMIT = (function () {
     setTimeout(function () { a.remove(); URL.revokeObjectURL(url); }, 30000);
   }
 
-  // 學生端流程：輸入代碼（含檢查碼即時偵錯）→ 下載。取消則不下載。
-  async function downloadForTeacher(record, extra) {
+  // 詢問代碼：required 時不可留空。回傳 null 表示取消。
+  function askCode(required) {
+    for (;;) {
+      var input = prompt('請輸入老師發給你的 6 碼代碼（大小寫都可以）。' + (required ? '' : '\n忘記代碼請問老師；若直接按「確定」，檔案會標示「未簽章」。'), '');
+      if (input === null) return null;
+      var code = normalizeCode(input);
+      if (!code) {
+        if (required) { alert('上傳成績需要代碼，忘記代碼請問老師。'); continue; }
+        if (confirm('沒有輸入代碼，老師匯入時會顯示「未簽章」。確定要下載嗎？')) return '';
+        continue;
+      }
+      if (validCode(code)) return code;
+      alert('代碼好像打錯了，請再檢查一次。\n提醒：代碼不會出現 0、O、1、I、L。');
+    }
+  }
+
+  // 學生端流程：輸入代碼（含檢查碼即時偵錯）→ 下載。取消則不下載。presetCode 可沿用剛輸入的代碼。
+  async function downloadForTeacher(record, extra, presetCode) {
     if (!record) { alert('找不到本次繳交紀錄，請重新作答後再下載。'); return null; }
-    var code = '';
-    if (record.mode === 'exam') {
+    var code = presetCode || '';
+    if (record.mode === 'exam' && !presetCode) {
       if (!canSign()) {
         if (!confirm('這台裝置無法產生驗證碼，檔案會標示「未簽章」，老師需另外確認。仍要下載嗎？')) return null;
       } else {
-        for (;;) {
-          var input = prompt('請輸入老師發給你的 6 碼代碼（大小寫都可以）。\n忘記代碼請問老師；若直接按「確定」，檔案會標示「未簽章」。', '');
-          if (input === null) return null;
-          code = normalizeCode(input);
-          if (!code) { if (confirm('沒有輸入代碼，老師匯入時會顯示「未簽章」。確定要下載嗎？')) break; continue; }
-          if (validCode(code)) break;
-          alert('代碼好像打錯了，請再檢查一次。\n提醒：代碼不會出現 0、O、1、I、L。');
-        }
+        code = askCode(false);
+        if (code === null) return null;
       }
     }
     var file = await buildCsv(record, extra, code);
@@ -111,6 +126,36 @@ window.NTC_SUBMIT = (function () {
     return file;
   }
 
-  return { ALPHABET: ALPHABET, normalizeCode: normalizeCode, checkChar: checkChar, validCode: validCode,
+  // 線上上傳（第 2 階段）：老師按下開放後才收件；失敗時可改下載成績檔。
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  async function post(url, body) {
+    var last;
+    for (var i = 0; i < 3; i++) {
+      try {
+        var res = await fetch(url, { method: 'POST', body: body }); // 字串 body → text/plain，免 CORS 預檢
+        return await res.json();
+      } catch (e) { last = e; await sleep(800 * (i + 1) + Math.random() * 600); }
+    }
+    throw last;
+  }
+  async function uploadOnline(record, extra) {
+    var url = window.NTC_CONFIG && NTC_CONFIG.uploadUrl;
+    if (!record) { alert('找不到本次繳交紀錄，請重新作答後再上傳。'); return null; }
+    if (record.mode !== 'exam') { alert('練習模式的紀錄不需要上傳。'); return null; }
+    if (!url) { alert('老師尚未設定線上上傳，請改用「下載成績檔」交給老師。'); return null; }
+    if (!canSign()) { alert('這台裝置無法產生驗證碼，請改用「下載成績檔」交給老師。'); return null; }
+    var code = askCode(true);
+    if (code === null) return null;
+    var sp = await signed(record, extra, code), res;
+    try { res = await post(url, JSON.stringify({ data: sp.data, sig: sp.sig })); }
+    catch (e) { res = { ok: false, code: 'network', message: '網路連線失敗。' }; }
+    if (res.ok) { alert('✅ ' + res.message); return res; }
+    var fallback = res.code === 'closed' || res.code === 'network' || res.code === 'error';
+    if (fallback && confirm('❌ ' + res.message + '\n\n要改下載成績檔，用通訊軟體交給老師嗎？')) await downloadForTeacher(record, extra, code);
+    else if (!fallback) alert('❌ ' + res.message);
+    return res;
+  }
+
+  return { uploadOnline: uploadOnline, ALPHABET: ALPHABET, normalizeCode: normalizeCode, checkChar: checkChar, validCode: validCode,
     pinKey: pinKey, sign: sign, buildCsv: buildCsv, downloadForTeacher: downloadForTeacher, HEADER: HEADER };
 })();
